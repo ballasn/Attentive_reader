@@ -62,6 +62,7 @@ def main(job_id, params):
                                 saveFreq=3000,
                                 patience=1000,
                                 use_dropout=params['use-dropout'][0],
+                                bn_everywhere=params['bn_everywhere'],
                                 **sent_opts)
 
     return validerr, validcost
@@ -90,8 +91,14 @@ if __name__ == '__main__':
     parser.add_argument("--debug", default=0, type=int)
     parser.add_argument("--use_bidir", default=0, type=int)
     parser.add_argument("--ms_nlayers", default=2, type=int)
+    parser.add_argument("--bn-everywhere", action="store_true")
     parser.add_argument("--reloadm", default=0, type=int)
     args = parser.parse_args()
+
+    if args.bn_everywhere:
+        # haven't implemented BN versions of other unit types
+        assert args.unit_type in "lstm bnlstm".split()
+        args.unit_type = "bnlstm"
 
     main(0, {
         'debug': args.debug,
@@ -103,8 +110,8 @@ if __name__ == '__main__':
         'dim_word_desc': [int(args.dim)],
         'use_dq_sims': args.use_dq_sims,
         'use_desc_skip_c_g': args.use_desc_skip_c_g,
-        'valid_datasets': ['/u/yyu/stor/caglar/rc-data/cnn/cnn_valid_data2.h5',
-                           '/u/yyu/stor/caglar/rc-data/cnn/cnn_valid_data2.h5'],
+        'valid_datasets': ['/data/lisatmp4/gulcehrc/rc-data/cnn/cnn_valid_data2.h5',
+                           '/data/lisatmp4/gulcehrc/rc-data/cnn/cnn_valid_data2.h5'],
         'decay-c': [0.],
         'use_bidir': args.use_bidir,
         'ms_nlayers': args.ms_nlayers,
@@ -123,4 +130,5 @@ if __name__ == '__main__':
         'use_sent_reps': args.use_sent_reps,
         'learning-rate': [args.lr],
         'batch_size': args.batch_size,
+        'bn_everywhere': args.bn_everywhere,
         'reload': [args.reloadm]})

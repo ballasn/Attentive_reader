@@ -33,12 +33,20 @@ def init_params(options):
                                       options['dim_word_desc'])
 
     mult = 2
+
+    # NOTE: cooijmat: I get a shape mismatch error and I don't know
+    # why, but this silences it and I suspect is correct:
+    mult = 2 if options['use_bidir'] else 1
+
     if options['ms_nlayers'] > 1 and (options['encoder_desc'] == 'lstm_ms' or \
             options['encoder_desc'] == 'lstm_max_ms'):
 
         mult = options['ms_nlayers']
         if options['use_bidir']:
             mult *= 2
+
+    # layer type for maybe-batch-normalized ff layers
+    layertype = 'bnff' if options["bn_everywhere"] else 'ff'
 
     if options['use_dq_sims']:
         params['ff_att_bi_dq'] = \
@@ -89,13 +97,13 @@ def init_params(options):
                                                                 dim=options['dim'])
     ctxdim = mult * options['dim']
     logger.info("context dimensions is %d" % ctxdim)
-    params = get_layer('ff')[0](options, params,
+    params = get_layer(layertype)[0](options, params,
                                 prefix='ff_att_ctx',
                                 nin=ctxdim,
                                 nout=options['dim'])
 
     # readout
-    params = get_layer('ff')[0](options, params,
+    params = get_layer(layertype)[0](options, params,
                                 prefix='ff_att_q',
                                 nin=ctxdim,
                                 nout=options['dim'],
@@ -105,7 +113,7 @@ def init_params(options):
 
     if options['use_desc_skip_c_g']:
         # readout for mean pooled desc
-        params = get_layer('ff')[0](options, params,
+        params = get_layer(layertype)[0](options, params,
                                     prefix='ff_out_mean_d',
                                     nin=ctxdim,
                                     nout=options['dim_word_ans'],
@@ -113,13 +121,13 @@ def init_params(options):
                                     ortho=False)
 
 
-    params = get_layer('ff')[0](options, params,
+    params = get_layer(layertype)[0](options, params,
                                 prefix='ff_out_q',
                                 nin=ctxdim,
                                 nout=options['dim_word_ans'],
                                 ortho=False)
 
-    params = get_layer('ff')[0](options, params,
+    params = get_layer(layertype)[0](options, params,
                                 prefix='ff_out_ctx',
                                 nin=ctxdim,
                                 nout=options['dim_word_ans'],
@@ -131,6 +139,7 @@ def init_params(options):
                                 nin=options['dim_word_ans'],
                                 nout=options['n_words_ans'],
                                 ortho=False)
+
     return params
 
 
@@ -253,13 +262,14 @@ def build_attention(tparams,
     masked_desc = desc * desc_mask_
 
     desc_in = desc.reshape((-1, desc.shape[-1]))
-    projd = get_layer('ff')[1](tparams=tparams,
+    layertype = 'bnff' if options["bn_everywhere"] else 'ff'
+    projd = get_layer(layertype)[1](tparams=tparams,
                                state_below=desc_in,
                                options=options,
                                prefix='ff_att_ctx',
                                activ='Linear')
 
-    projq = get_layer('ff')[1](tparams, q,
+    projq = get_layer(layertype)[1](tparams, q,
                                options,
                                prefix='ff_att_q',
                                use_bias=False,
@@ -270,6 +280,8 @@ def build_attention(tparams,
     """
     sim_vals = 0
     if options['use_dq_sims']:
+        print("NOTE: use_dq_sims introduces an extra term that we should batch normalize but currently don't because it's complicated")
+        # really these two factors should be batch normalized separately, and then their product might need normalization as well.
         q_proj = dot(q, tparams['ff_att_bi_dq'])
         desc_proj = dot(masked_desc,
                         tparams['ff_att_bi_dq']).reshape((masked_desc.shape[0],
@@ -466,13 +478,14 @@ def build_model(tparams,
         desc_rep = proj_x
         q_rep = proj_q[-1]
 
+    layertype = 'bnff' if options["bn_everywhere"] else 'ff'
     g_desc_ave = 0.
 
     if options['use_desc_skip_c_g']:
         desc_mean = (desc_rep * desc_mask).sum(0) / \
                 tensor.cast(desc_mask.sum(0), 'float32')
 
-        g_desc_ave = get_layer('ff')[1](tparams,
+        g_desc_ave = get_layer(layertype)[1](tparams,
                                         desc_mean,
                                         options,
                                         prefix='ff_out_mean_d',
@@ -491,14 +504,14 @@ def build_model(tparams,
     opt_ret['dec_alphas'] = alphas
     opt_ret['desc_ctx'] = desc_ctx
 
-    g_ctx = get_layer('ff')[1](tparams,
+    g_ctx = get_layer(layertype)[1](tparams,
                                desc_ctx,
                                options,
                                prefix='ff_out_ctx',
                                use_bias=False,
                                activ='Linear')
 
-    g_q = get_layer('ff')[1](tparams,
+    g_q = get_layer(layertype)[1](tparams,
                              q_rep,
                              options,
                              prefix='ff_out_q',

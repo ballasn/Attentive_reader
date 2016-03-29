@@ -14,7 +14,7 @@ numpy.random.seed(1234)
 
 def get_data_files(mode="top8"):
     if mode == "top8":
-        vdir = "/u/yyu/stor/cnn/pureNoUnify/att8/"
+        vdir = "/data/lisatmp4/gulcehrc/att8/"
         vpath = os.path.join(vdir, "dict_v8.pkl")
 
         train_files = [os.path.join(vdir, "train8v2_pass.pkl"),
@@ -25,7 +25,7 @@ def get_data_files(mode="top8"):
                     os.path.join(vdir, "valid8v2_qs.pkl"),
                     os.path.join(vdir, "valid8v2_ans.pkl")]
     else:
-        vdir = "/u/yyu/stor/cnn/pureNoUnify/att/"
+        vdir = "/data/lisatmp4/gulcehrc/att/"
         vpath = os.path.join(vdir, "dict.pkl")
 
         train_files = [os.path.join(vdir, "train4_pass.pkl"),

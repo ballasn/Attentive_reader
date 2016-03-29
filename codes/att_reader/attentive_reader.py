@@ -144,6 +144,7 @@ def train(dim_word_desc=400,# word vector dimensionality
           dropout_rate=0.5,
           use_dropout=True,
           reload_=True,
+          bn_everywhere=False,
           **opt_ds):
 
     ensure_dir_exists(model_dir)
