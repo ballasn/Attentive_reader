@@ -274,7 +274,6 @@ def train(dim_word_desc=400,# word vector dimensionality
             grads[p] = tensor.switch(g2 > (clip_c**2),
                                      (g / tensor.sqrt(g2 + 1e-8)) * clip_c,
                                      g)
-    inps.pop()
     if optimizer.lower() == "adasecant":
         learning_rule = Adasecant(delta_clip=25.0,
                                   use_adagrad=True,
@@ -334,7 +333,7 @@ def train(dim_word_desc=400,# word vector dimensionality
         if train.done:
             train.reset()
 
-        for d_, q_, a, em in train:
+        for d_, q_, a, max_dlen, max_qlen in train:
             n_samples += len(a)
             uidx += 1
             use_noise.set_value(1.)

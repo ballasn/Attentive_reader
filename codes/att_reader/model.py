@@ -570,16 +570,12 @@ def eval_model(f_log_probs,
     probs, errors, costs, alphas, error_ents, error_dents = [], [], [], [], [], []
     n_done = 0
     for batch in iterator:
-        if len(batch) >= 3:
-            d = batch[0]
-            q = batch[1]
-            a = batch[2]
-            em = batch[3]
-        else:
-            d = batch[0]
-            q = batch[1]
-            a = batch[2]
-            em = None
+        d = batch[0]
+        q = batch[1]
+        a = batch[2]
+        max_dlen = batch[3]
+        max_qlen = batch[4]
+        em = None
 
         n_done += len(d)
         if em:
@@ -652,7 +648,7 @@ def eval_model(f_log_probs,
             if perror_dent:
                 error_dents.append(perror_dent)
 
-        if numpy.isnan(numpy.mean(probs)):
+        if numpy.isnan(numpy.concatenate(probs)).any():
             import ipdb; ipdb.set_trace()
 
         if verbose:
@@ -667,5 +663,5 @@ def eval_model(f_log_probs,
     if len(error_dents) > 0:
         error_dent = numpy.mean(error_dents)
 
-    return numpy.array(costs), numpy.array(errors), numpy.array(probs), \
+    return numpy.array(costs), numpy.array(errors), numpy.concatenate(probs), \
             numpy.array(alphas), error_ent, error_dent

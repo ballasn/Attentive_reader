@@ -5,20 +5,26 @@ import os
 import pprint as pp
 from utils import create_model_name, create_entity_mask
 from pkl_data_iterator import get_data_files
+from rc_data_iter import load_vocab_path
 
 import numpy
 
 
 def main(job_id, params):
-    train_files, valid_files, vpath = get_data_files(mode=params["data_mode"])
+    if params["data_mode"] == "full":
+        vpath = load_vocab_path()
+        train_files, valid_files = None, None
+    else:
+        train_files, valid_files, vpath = get_data_files(mode=params["data_mode"])
     dvocab = pkl.load(open(vpath))
     emb_sz = len(dvocab) + 1
     eyem = numpy.eye(emb_sz)
 
-    sent_opts = {'use_sent_reps': params['use_sent_reps'],
-                 'sent_end_tok_ids': [dvocab['.'],
-                                      dvocab['!']]}
-    cost_mask = create_entity_mask(dvocab, eyem)
+    sent_opts = {'use_sent_reps': False}
+# {'use_sent_reps': params['use_sent_reps'],
+#                 'sent_end_tok_ids': [dvocab['.'],
+#                                      dvocab['!']]}
+    cost_mask = None#create_entity_mask(dvocab, eyem)
     pp.pprint(params)
     new_model_name = create_model_name(params['model'], params)
 
@@ -110,8 +116,8 @@ if __name__ == '__main__':
         'dim_word_desc': [int(args.dim)],
         'use_dq_sims': args.use_dq_sims,
         'use_desc_skip_c_g': args.use_desc_skip_c_g,
-        'valid_datasets': ['/data/lisatmp4/gulcehrc/rc-data/cnn/cnn_valid_data2.h5',
-                           '/data/lisatmp4/gulcehrc/rc-data/cnn/cnn_valid_data2.h5'],
+        'valid_datasets': ['/data/lisatmp4/gulcehrc/reading_comprehension_data/cleaned_cnn/cnn_validation_data.h5',
+                           '/data/lisatmp4/gulcehrc/reading_comprehension_data/cleaned_cnn/cnn_validation_data.h5'],
         'decay-c': [0.],
         'use_bidir': args.use_bidir,
         'ms_nlayers': args.ms_nlayers,

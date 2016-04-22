@@ -1,4 +1,4 @@
-import threading
+import threading, os, cPickle as pkl
 import Queue
 import logging
 
@@ -80,6 +80,10 @@ def parse_description_sents(seqs_x, sent_end_toks, eos_tok_id, quote_tok_id):
 
     return batch
 
+def load_vocab_path():
+    vdir = "/data/lisatmp4/gulcehrc/reading_comprehension_data/cleaned_cnn/"
+    path = os.path.join(vdir, "i_cleaned_cnn_vocab.pkl")
+    return path
 
 def load_data(path=None,
               valid_path=None,
@@ -160,7 +164,8 @@ class PytablesRCDataIterator(Iterator):
                  queue_size=1000,
                  cache_size=1000,
                  shuffle=True,
-                 use_infinite_loop=False):
+                 use_infinite_loop=False,
+                 **kwargs):
 
         args = locals()
         args.pop("self")
