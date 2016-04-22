@@ -14,6 +14,8 @@ from core.commons import Sigmoid, Tanh, Rect, global_trng, Linear, ELU
 def bn(x, gamma=1., beta=0.):
     assert x.ndim == 2
     mean, var = x.mean(axis=0), x.var(axis=0)
+    mean.tag.bn_statistic = True
+    var.tag.bn_statistic = True
     y = theano.tensor.nnet.bn.batch_normalization(
         inputs=x,
         gamma=gamma, beta=beta,
