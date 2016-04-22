@@ -37,7 +37,9 @@ def prepare_data(seqs_x, maxlen=None, n_words=30000):
 
     for idx, s_x in enumerate(seqs_x):
         s_x[numpy.where(s_x >= n_words-1)] = 1
-        x[:lengths_x[idx], idx] = s_x
+        s_x = numpy.concatenate([s_x, [0]])
+        # pad with repetitions
+        x[:, idx] = s_x[numpy.arange(maxlen_x) % (lengths_x[idx] + 1)]
         x_mask[:lengths_x[idx]+1, idx] = 1.
 
     return x, x_mask
