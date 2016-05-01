@@ -7,7 +7,7 @@ from utils import create_model_name, create_entity_mask
 from pkl_data_iterator import get_data_files
 from rc_data_iter import load_vocab_path
 
-import numpy
+import numpy, scipy.sparse
 
 
 def main(job_id, params):
@@ -18,7 +18,7 @@ def main(job_id, params):
         train_files, valid_files, vpath = get_data_files(mode=params["data_mode"])
     dvocab = pkl.load(open(vpath))
     emb_sz = len(dvocab) + 1
-    eyem = numpy.eye(emb_sz)
+    eyem = scipy.sparse.eye(emb_sz)
 
     sent_opts = {'use_sent_reps': False}
 # {'use_sent_reps': params['use_sent_reps'],
