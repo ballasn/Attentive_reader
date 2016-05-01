@@ -1,4 +1,5 @@
 import cPickle as pkl
+import itertools
 import numpy
 import copy
 import theano
@@ -24,6 +25,10 @@ import warnings
 
 profile = False
 
+def check_batch(xs, x_masks, ys, y_masks):
+    for x, x_mask, y, y_mask in zip(xs.T, x_masks.T, ys.T, y_masks.T):
+        assert all(a == b for a, b in zip(x, itertools.cycle(x[:x_mask.sum() + 1])))
+        assert all(a == b for a, b in zip(y, itertools.cycle(y[:y_mask.sum() + 1])))
 
 # batch preparation
 def prepare_data(seqs_x, seqs_y):
@@ -43,10 +48,17 @@ def prepare_data(seqs_x, seqs_y):
     y_mask = numpy.zeros((maxlen_y, n_samples)).astype('float32')
 
     for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
-        x[:lengths_x[idx], idx] = s_x
+        # pad with repetitions while maintaining the zero at the end
+        s_x = numpy.concatenate([s_x, [0]])
+        s_y = numpy.concatenate([s_y, [0]])
+        x[:, idx] = s_x[numpy.arange(maxlen_x) % (lengths_x[idx] + 1)]
+        y[:, idx] = s_y[numpy.arange(maxlen_y) % (lengths_y[idx] + 1)]
+        # FIXME: should these go up to lengths_x[idx] + 1?
         x_mask[:lengths_x[idx], idx] = 1.
-        y[:lengths_y[idx], idx] = s_y
         y_mask[:lengths_y[idx], idx] = 1.
+
+    if numpy.random.random() < 0.01:
+        check_batch(x, x_mask, y, y_mask)
 
     return x, x_mask, y, y_mask, maxlen_x, maxlen_y
 
@@ -326,6 +338,10 @@ def train(dim_word_desc=400,# word vector dimensionality
 
     train_cost_ave, train_err_ave, \
             train_gnorm_ave = reset_train_vals()
+
+    theano.printing.debugprint(f_grad_shared, print_type=True, file=open("%s_f_grad_shared.graph.txt" % mpath, "w"))
+    theano.printing.debugprint(f_update,      print_type=True, file=open("%s_f_update.graph.txt"      % mpath, "w"))
+    print "graphs dumped"
 
     for eidx in xrange(max_epochs):
         n_samples = 0
