@@ -386,22 +386,9 @@ def build_model(tparams,
                                               name="encoder_desc_word")
 
         desc_wrep = concatenate([proj_wx[0],
-                                proj_wxr[0][::-1]],
+                                 proj_wxr[0][::-1]],
                                 axis=-1)
-    else:
-        proj_wx = build_nonbidir_model(x_rshp,
-                                       word_mask,
-                                       tparams,
-                                       options,
-                                       sfx="word",
-                                       nsteps=wlen,
-                                       truncate=options['truncate'],
-                                       use_dropout=options['use_dropout'],
-                                       use_noise=use_noise,
-                                       name="encoder_desc_word")
-        desc_wrep = proj_wx
 
-    if options['use_bidir']:
         if options['use_sent_reps']:
             desc_wrep = desc_wrep.reshape((x.shape[0],
                                            x.shape[1],
@@ -447,6 +434,18 @@ def build_model(tparams,
                             axis=-1)
 
     else:
+        proj_wx = build_nonbidir_model(x_rshp,
+                                       word_mask,
+                                       tparams,
+                                       options,
+                                       sfx="word",
+                                       nsteps=wlen,
+                                       truncate=options['truncate'],
+                                       use_dropout=options['use_dropout'],
+                                       use_noise=use_noise,
+                                       name="encoder_desc_word")
+        desc_wrep = proj_wx
+
         if options['use_sent_reps']:
             desc_wrep = desc_wrep.reshape((x.shape[0],
                                            x.shape[1],
