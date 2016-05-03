@@ -18,7 +18,7 @@ from core.commons import Sigmoid, Tanh, Softmax, ELU
 from core.costs import nll_simple, multiclass_hinge_loss
 
 from collections import OrderedDict
-
+from reverse_realign import reverse_realign
 
 profile = False
 
@@ -167,7 +167,6 @@ def build_bidir_model(inp,
     # long if you do it on the embedding, so we reverse before the embedding and then
     # recompute the embedding for the reverse batch even if it's just a reshuffling of
     # the forward batch.
-    from reverse_realign import reverse_realign
     inpr = reverse_realign(inp, inp_mask, batch_axis=1, time_axis=0)
     inpr_mask = inp_mask
 
@@ -386,7 +385,7 @@ def build_model(tparams,
                                               name="encoder_desc_word")
 
         desc_wrep = concatenate([proj_wx[0],
-                                 proj_wxr[0][::-1]],
+                                 reverse_realign(proj_wxr[0], word_mask, batch_axis=1, time_axis=0)],
                                 axis=-1)
 
         if options['use_sent_reps']:
@@ -407,10 +406,12 @@ def build_model(tparams,
                                                   truncate=options['truncate'],
                                                   name="encoder_desc_sent")
 
-            proj_x, proj_xr = proj_sx, proj_sxr
+            desc_rep = concatenate([proj_sx[0],
+                                    reverse_realign(proj_sxr[0], sent_mask, batch_axis=1, time_axis=0)],
+                                   axis=-1)
             desc_mask = sent_mask.dimshuffle(0, 1, 'x')
         else:
-            proj_x, proj_xr = proj_wx, proj_wxr
+            desc_rep = desc_wrep
             desc_mask = word_mask.dimshuffle(0, 1, 'x')
 
         """
@@ -425,13 +426,7 @@ def build_model(tparams,
                                             use_noise=use_noise,
                                             name="encoder_q")
 
-        desc_rep = concatenate([proj_x[0],
-                                proj_xr[0][::-1]],
-                                axis=-1)
-
-        q_rep = concatenate([proj_q[0][-1],
-                            proj_qr[0][::-1][0]],
-                            axis=-1)
+        q_rep = concatenate([proj_q[0][-1], proj_qr[0][-1]], axis=-1)
 
     else:
         proj_wx = build_nonbidir_model(x_rshp,
