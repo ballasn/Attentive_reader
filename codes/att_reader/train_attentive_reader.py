@@ -1,3 +1,9 @@
+# popstat_eval requires https://github.com/Theano/Theano/pull/3500
+import sys
+sys.path.insert(0, "/u/cooijmat/dev/wiprepos/Theano")
+sys.path.append("/u/cooijmat/dev/wiprepos/Theano")
+import theano
+
 from attentive_reader import train
 import argparse
 import cPickle as pkl
@@ -69,6 +75,7 @@ def main(job_id, params):
                                 patience=1000,
                                 use_dropout=params['use-dropout'][0],
                                 bn_everywhere=params['bn_everywhere'],
+                                popstat_eval=params['popstat_eval'],
                                 **sent_opts)
 
     return validerr, validcost
@@ -98,6 +105,7 @@ if __name__ == '__main__':
     parser.add_argument("--use_bidir", default=0, type=int)
     parser.add_argument("--ms_nlayers", default=2, type=int)
     parser.add_argument("--bn-everywhere", action="store_true")
+    parser.add_argument("--popstat-eval", action="store_true")
     parser.add_argument("--reloadm", default=0, type=int)
     args = parser.parse_args()
 
@@ -137,4 +145,5 @@ if __name__ == '__main__':
         'learning-rate': [args.lr],
         'batch_size': args.batch_size,
         'bn_everywhere': args.bn_everywhere,
+        'popstat_eval': args.popstat_eval,
         'reload': [args.reloadm]})

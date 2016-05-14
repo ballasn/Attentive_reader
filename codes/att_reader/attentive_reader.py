@@ -5,6 +5,7 @@ import copy
 import theano
 from theano import tensor
 
+import sys
 import os
 import time
 
@@ -160,6 +161,7 @@ def train(dim_word_desc=400,# word vector dimensionality
           use_dropout=True,
           reload_=True,
           bn_everywhere=False,
+          popstat_eval=False,
           **opt_ds):
 
     ensure_dir_exists(model_dir)
@@ -278,6 +280,68 @@ def train(dim_word_desc=400,# word vector dimensionality
     print 'Computing gradient...',
     grads = safe_grad(cost, itemlist(tparams))
     print 'Done'
+
+    if popstat_eval:
+        def train_batches():
+            if train.done:
+                train.reset()
+            for i, (d_, q_, a, max_dlen, max_qlen) in enumerate(train):
+                # FIXME: using just 10 batches for debugging
+                if i > 10:
+                    break
+                sys.stderr.write(".")
+                d, d_mask, q, q_mask, dlen, qlen = prepare_data(d_, q_)
+                if d is None:
+                    print 'Minibatch with zero sample under length ', maxlen
+                    uidx -= 1
+                    continue
+                yield dict(desc=d, desc_mask=d_mask,
+                           q=q, q_mask=q_mask,
+                           ans=a, wlen=dlen, qlen=qlen)
+            sys.stdout.write("\n")
+
+        use_noise.set_value(0.)
+
+        print "estimating population statistics and constructing inference graph"
+        from popstats import get_inference_graph
+        popouts = get_inference_graph(inps, outs, train_batches())
+        print "compiling f_pop_log_probs"
+        f_pop_log_probs = theano.function(inps, popouts, profile=profile)
+
+        if valid.done:
+            valid.reset()
+
+        (valid_costs, valid_errs, valid_probs,
+         valid_alphas, error_ent, error_dent) = eval_model(
+             f_log_probs,
+             prepare_data if not opt_ds['use_sent_reps']
+             else prepare_data_sents,
+             model_options,
+             valid,
+             use_sent_rep=opt_ds['use_sent_reps'])
+
+        valid_alphas_ = numpy.concatenate([va.argmax(0) for va  in valid_alphas.tolist()], axis=0)
+
+        result = dict(valid_errs=valid_errs.mean(),
+                      valid_costs=valid_costs.mean(),
+                      valid_err_ent=error_ent,
+                      valid_err_desc_ent=error_dent,
+                      valid_alphas_mean=valid_alphas_.mean(),
+                      valid_alphas_std=valid_alphas_.std(),
+                      valid_alphas_ent=-negentropy(valid_alphas),
+                      valid_probs_mean=valid_probs.argmax(1).mean(),
+                      valid_probs_std=valid_probs.argmax(1).std())
+
+        print "popstat evaluation result:"
+        for key, value in result.items():
+            print "%20s %f" % (key, value)
+
+        print "saving popstat graph"
+        import blocks.serialization, functools as ft
+        mpath_popstats = os.path.join(model_dir, prfx("popstats", saveto))
+        blocks.serialization.secure_dump(popouts, "%s.pkl" % mpath_popstats,
+                                         dump_function=ft.partial(blocks.serialization.dump, use_cpickle=True))
+        sys.exit(0)
 
     # Gradient clipping:
     if clip_c > 0.:
