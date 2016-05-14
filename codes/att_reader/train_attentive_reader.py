@@ -103,6 +103,7 @@ if __name__ == '__main__':
     parser.add_argument("--data_mode", default="top4", type=str)
     parser.add_argument("--debug", default=0, type=int)
     parser.add_argument("--use_bidir", default=0, type=int)
+    parser.add_argument("--use_dropout", default=1, type=int)
     parser.add_argument("--ms_nlayers", default=2, type=int)
     parser.add_argument("--bn-everywhere", action="store_true")
     parser.add_argument("--popstat-eval", action="store_true")
@@ -136,7 +137,7 @@ if __name__ == '__main__':
         'encoder_q': args.unit_type,
         'truncate': int(args.truncate),
         'learn_h0': args.learn_h0,
-        'use-dropout': [True],
+        'use-dropout': [bool(args.use_dropout)],
         'model_dir': args.model_dir,
         'optimizer': args.optimizer,
         'validFreq': args.validFreq,
