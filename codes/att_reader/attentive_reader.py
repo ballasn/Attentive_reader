@@ -313,7 +313,7 @@ def train(dim_word_desc=400,# word vector dimensionality
 
             (costs, errs, probs,
              alphas, error_ent, error_dent) = eval_model(
-                f_log_probs,
+                f_pop_log_probs,
                 prepare_data if not opt_ds['use_sent_reps']
                 else prepare_data_sents,
                 model_options,
