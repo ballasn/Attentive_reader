@@ -24,6 +24,23 @@ def bn(x, gamma=1., beta=0.):
     assert y.ndim == 2
     return y
 
+# sequence-wise batch normalization as in Laurent et al 2015
+def bn_sequence(x, gamma=1., beta=0., mask=None):
+    assert x.ndim == 3
+    n = mask.sum()
+    n = theano.tensor.opt.Assert("mask all zero")(n, n > 0)
+    mean = (x * mask / n).sum(axis=[0, 1])
+    var = (((x - mean[None, None, :])**2) * mask / n).sum(axis=[0, 1])
+    mean.tag.bn_statistic = True
+    var.tag.bn_statistic = True
+    y = theano.tensor.nnet.bn.batch_normalization(
+        inputs=x.reshape((x.shape[0] * x.shape[1],) + tuple(x.shape[i] for i in range(2, x.ndim))),
+        gamma=gamma, beta=beta,
+        mean=tensor.shape_padleft(mean),
+        std=tensor.shape_padleft(tensor.sqrt(var + 1e-6))).reshape(x.shape)
+    assert y.ndim == 3
+    return y
+
 
 profile = False
 layers = {
@@ -310,8 +327,7 @@ def bnlstm_layer(tparams, state_below,
             return _x[:, :, n*dim:(n+1)*dim]
         return _x[:, n*dim:(n+1)*dim]
 
-    def _step(mask, sbelow, sbefore, cell_before, *args):
-        sbelow_ = bn(sbelow, gamma=param('input_gammas'))
+    def _step(mask, sbelow_, sbefore, cell_before, *args):
         sbefore_ = bn(dot(sbefore, param('U')), gamma=param('recurrent_gammas'))
 
         preact = sbefore_ + sbelow_ + param('b')
@@ -335,7 +351,11 @@ def bnlstm_layer(tparams, state_below,
         lstm_state_below = lstm_state_below.reshape((state_below.shape[0],
                                                      state_below.shape[1],
                                                      -1))
+
     if one_step:
+        # if this is the case then the sequence of lstm_state_below states
+        # should be batch-normalized by the caller
+        assert False
         mask = mask.dimshuffle(0, 'x')
         h, c = _step(mask, lstm_state_below, init_state, init_memory)
         rval = [h, c]
@@ -346,8 +366,11 @@ def bnlstm_layer(tparams, state_below,
         elif mask.ndim == 2:
             mask = mask.dimshuffle(0, 1, 'x')
 
+        # batch-normalize input sequence-wise
+        lstm_state_below_ = bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask)
+
         rval, updates = theano.scan(_step,
-                                    sequences=[mask, lstm_state_below],
+                                    sequences=[mask, lstm_state_below_],
                                     outputs_info = [init_state,
                                                     init_memory],
                                     name=prfx(prefix, '_layers'),

@@ -172,7 +172,7 @@ def build_bidir_model(inp,
 
     def embed(inp):
         emb = dot(inp, tparams["Wemb_%s" % sfx])
-	emb = emb.reshape([n_timesteps, n_samples, -1])
+        emb = emb.reshape([n_timesteps, n_samples, -1])
         if use_dropout:
             emb = dropout_layer(emb, use_noise, p=options['dropout_rate'])
         return emb
