@@ -307,33 +307,34 @@ def train(dim_word_desc=400,# word vector dimensionality
         print "compiling f_pop_log_probs"
         f_pop_log_probs = theano.function(inps, popouts, profile=profile)
 
-        if valid.done:
-            valid.reset()
+        for label, iterator in dict(valid=valid, test=test).items():
+            if iterator.done:
+                iterator.reset()
 
-        (valid_costs, valid_errs, valid_probs,
-         valid_alphas, error_ent, error_dent) = eval_model(
-             f_log_probs,
-             prepare_data if not opt_ds['use_sent_reps']
-             else prepare_data_sents,
-             model_options,
-             valid,
-             use_sent_rep=opt_ds['use_sent_reps'])
+            (costs, errs, probs,
+             alphas, error_ent, error_dent) = eval_model(
+                f_log_probs,
+                prepare_data if not opt_ds['use_sent_reps']
+                else prepare_data_sents,
+                model_options,
+                iterator,
+                use_sent_rep=opt_ds['use_sent_reps'])
 
-        valid_alphas_ = numpy.concatenate([va.argmax(0) for va  in valid_alphas.tolist()], axis=0)
+            alphas_ = numpy.concatenate([a.argmax(0) for a in alphas.tolist()], axis=0)
 
-        result = dict(valid_errs=valid_errs.mean(),
-                      valid_costs=valid_costs.mean(),
-                      valid_err_ent=error_ent,
-                      valid_err_desc_ent=error_dent,
-                      valid_alphas_mean=valid_alphas_.mean(),
-                      valid_alphas_std=valid_alphas_.std(),
-                      valid_alphas_ent=-negentropy(valid_alphas),
-                      valid_probs_mean=valid_probs.argmax(1).mean(),
-                      valid_probs_std=valid_probs.argmax(1).std())
+            result = dict(errs=errs.mean(),
+                          costs=costs.mean(),
+                          err_ent=error_ent,
+                          err_desc_ent=error_dent,
+                          alphas_mean=alphas_.mean(),
+                          alphas_std=alphas_.std(),
+                          alphas_ent=-negentropy(alphas),
+                          probs_mean=probs.argmax(1).mean(),
+                          probs_std=probs.argmax(1).std())
 
-        print "popstat evaluation result:"
-        for key, value in result.items():
-            print "%20s %f" % (key, value)
+            print "popstat %s evaluation result:" % label
+            for key, value in result.items():
+                print "%20s %f" % (key, value)
 
         print "saving popstat graph"
         import blocks.serialization, functools as ft
