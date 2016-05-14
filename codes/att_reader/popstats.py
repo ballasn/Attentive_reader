@@ -1,7 +1,4 @@
 import sys
-# replacement inside scan requires https://github.com/Theano/Theano/pull/3500
-sys.path.insert(0, "/u/cooijmat/dev/wiprepos/Theano")
-sys.path.append("/u/cooijmat/dev/wiprepos/Theano")
 import theano, itertools, pprint, copy, numpy as np, theano.tensor as T
 from collections import OrderedDict
 from theano.gof.op import ops_with_inner_function
@@ -18,6 +15,9 @@ def equizip(*sequences):
 def export(node, extra_inner_outputs):
     assert isinstance(node.op, Scan)
 
+    # this is ugly but we can't use scan_utils.scan_args because that
+    # clones the inner graph and then extra_inner_outputs aren't in
+    # there anymore
     old_inner_inputs = node.op.inputs
     old_inner_outputs = node.op.outputs
     old_outer_inputs = node.inputs
@@ -33,12 +33,13 @@ def export(node, extra_inner_outputs):
     yuck = len(old_inner_outputs) - new_info["n_shared_outs"]
     new_inner_outputs[yuck:yuck] = extra_inner_outputs
 
-    # for each nitsot, scan() adds an outer input being the "actual_n_steps".
-    # we need to do this too. the first outer input to the scan node is also
-    # this "actual_n_steps" symbolic variable, so we can just copy that.
-    # logic taken from Scan.outer_nitsot
+    # in step 8, theano.scan() adds an outer input (being the actual
+    # number of steps) for each nitsot. we need to do the same thing.
+    # note these don't come with corresponding inner inputs.
     offset = (1 + node.op.n_seqs + node.op.n_mit_mot + node.op.n_mit_sot +
               node.op.n_sit_sot + node.op.n_shared_outs)
+    # the outer input is just the actual number of steps, which is
+    # always available as the first outer input.
     new_outer_inputs[offset:offset] = [new_outer_inputs[0]] * len(extra_inner_outputs)
 
     new_op = Scan(new_inner_inputs, new_inner_outputs, new_info)

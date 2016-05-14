@@ -1,9 +1,4 @@
-# popstat_eval requires https://github.com/Theano/Theano/pull/3500
 import sys
-sys.path.insert(0, "/u/cooijmat/dev/wiprepos/Theano")
-sys.path.append("/u/cooijmat/dev/wiprepos/Theano")
-import theano
-
 from attentive_reader import train
 import argparse
 import cPickle as pkl

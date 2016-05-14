@@ -286,9 +286,8 @@ def train(dim_word_desc=400,# word vector dimensionality
             if train.done:
                 train.reset()
             for i, (d_, q_, a, max_dlen, max_qlen) in enumerate(train):
-                # FIXME: using just 10 batches for debugging
-                if i > 10:
-                    break
+                #if i > 10:
+                #    break
                 sys.stderr.write(".")
                 d, d_mask, q, q_mask, dlen, qlen = prepare_data(d_, q_)
                 if d is None:
