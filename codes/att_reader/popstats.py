@@ -158,7 +158,7 @@ def get_inference_graph(inputs, batch_outputs, estimation_batches):
     for i, batch in enumerate(estimation_batches):
         estimates = estimator_fn(**batch)
         for symbatchstat, estimator, estimate in equizip(symbatchstats, estimators, estimates):
-            popstat = popstats.get(symbatchstat.tag.original_id, np.ndarray([0] * estimate.ndim, dtype=np.float32))
+            popstat = popstats.get(symbatchstat, np.ndarray([0] * estimate.ndim, dtype=np.float32))
 
             # grow to accomodate this batch
             popstat = np.pad(popstat,
@@ -166,7 +166,6 @@ def get_inference_graph(inputs, batch_outputs, estimation_batches):
                               for j in range(popstat.ndim)],
                              mode="constant")
 
-            # this average is exact if all batches have the same number of examples
             popstat[tuple(map(slice, estimate.shape))] *= i / float(i + 1)
             popstat[tuple(map(slice, estimate.shape))] += 1 / float(i + 1) * estimate
 

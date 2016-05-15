@@ -121,7 +121,7 @@ if __name__ == '__main__':
         'use_dq_sims': args.use_dq_sims,
         'use_desc_skip_c_g': args.use_desc_skip_c_g,
         'valid_datasets': ['/data/lisatmp4/gulcehrc/reading_comprehension_data/cleaned_cnn/cnn_validation_data.h5',
-                           '/data/lisatmp4/gulcehrc/reading_comprehension_data/cleaned_cnn/cnn_validation_data.h5'],
+                           '/data/lisatmp4/gulcehrc/reading_comprehension_data/cleaned_cnn/cnn_test_data.h5'],
         'decay-c': [0.],
         'use_bidir': args.use_bidir,
         'ms_nlayers': args.ms_nlayers,
