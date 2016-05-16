@@ -161,6 +161,8 @@ def train(dim_word_desc=400,# word vector dimensionality
           use_dropout=True,
           reload_=True,
           bn_everywhere=False,
+          bn_input_sequencewise=False,
+          bn_input_not=False,
           popstat_eval=False,
           **opt_ds):
 

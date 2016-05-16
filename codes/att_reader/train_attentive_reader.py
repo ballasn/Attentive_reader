@@ -70,6 +70,8 @@ def main(job_id, params):
                                 patience=1000,
                                 use_dropout=params['use-dropout'][0],
                                 bn_everywhere=params['bn_everywhere'],
+                                bn_input_sequencewise=params['bn_input_sequencewise'],
+                                bn_input_not=params['bn_input_not'],
                                 popstat_eval=params['popstat_eval'],
                                 **sent_opts)
 
