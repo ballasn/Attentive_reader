@@ -27,7 +27,9 @@ def main(job_id, params):
 #                                      dvocab['!']]}
     cost_mask = None#create_entity_mask(dvocab, eyem)
     pp.pprint(params)
-    new_model_name = create_model_name(params['model'], params)
+    #new_model_name = create_model_name([params['model']], params)
+    # model names based on options too hard to deal with
+    new_model_name = params['model']
 
     print "The model will be saved to %s" % new_model_name
     validerr, validcost = train(saveto=new_model_name,
@@ -82,16 +84,16 @@ if __name__ == '__main__':
     model_dir = "./"
 
     parser = argparse.ArgumentParser("The different variations of the attentive reader.")
-    parser.add_argument("--use_dq_sims", default=1, type=int)
+    parser.add_argument("--use_dq_sims", default=0, type=int)
     parser.add_argument("--use_desc_skip_c_g", type=int, default=0)
-    parser.add_argument("--truncate", default=50, type=int)
+    parser.add_argument("--truncate", default=-1, type=int)
     parser.add_argument("--model", default="new_model.npz")
     parser.add_argument("--dim", default=250, type=int)
-    parser.add_argument("--learn_h0", default=0, type=int)
+    parser.add_argument("--learn_h0", default=1, type=int)
     parser.add_argument("--model_dir", default=model_dir, type=str)
     parser.add_argument("--lr", default=4e-4, type=float)
     parser.add_argument("--optimizer", default="adam", type=str)
-    parser.add_argument("--validFreq", default=150, type=int)
+    parser.add_argument("--validFreq", default=1000, type=int)
     parser.add_argument("--batch_size", default=32, type=int)
     parser.add_argument("--use_sent_reps", default=0, type=int)
     parser.add_argument("--unit_type", default="lstm", type=str)
@@ -116,7 +118,7 @@ if __name__ == '__main__':
 
     main(0, {
         'debug': args.debug,
-        'model': [args.model],
+        'model': args.model,
         'dim': [int(args.dim)],
         'dim_word_q': [int(args.dim)],
         'dim_word_ans': [int(args.dim)],
