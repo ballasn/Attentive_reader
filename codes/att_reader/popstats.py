@@ -155,6 +155,7 @@ def get_inference_graph(inputs, batch_outputs, estimation_batches):
     # take average of batch statistics over estimation_batches
     estimator_fn = theano.function(inputs, estimators, on_unused_input="warn")
     popstats = {}
+    all_stats = dict(batch={}, pop={})
     for i, batch in enumerate(estimation_batches):
         estimates = estimator_fn(**batch)
         for symbatchstat, estimator, estimate in equizip(symbatchstats, estimators, estimates):
@@ -170,6 +171,34 @@ def get_inference_graph(inputs, batch_outputs, estimation_batches):
             popstat[tuple(map(slice, estimate.shape))] += 1 / float(i + 1) * estimate
 
             popstats[symbatchstat] = popstat
+
+            # record batch estimate for debugging
+            all_stats["batch"].get(symbatchstat, []).append(estimate)
+
+        all_stats["population"] = popstats
+
+        # record mask sum (for timestep coverage statistics)
+        for key in "desc_mask q_mask".split():
+            mask = batch[key]
+            total_mask = all_stats.get(key, np.array([], dtype=np.float32))
+            # grow to accommodate
+            total_mask = np.pad(total_mask,
+                                [(0, max(0, mask.shape[0] - total_mask.shape[0]))],
+                                mode="constant")
+            total_mask[:mask.shape[0]] += mask.sum(axis=1)
+            all_stats[key] = total_mask
+
+    if True:
+        # allow inspection of all_stats
+        import matplotlib.pyplot as plt
+        plt.figure()
+        for key in "desc_mask q_mask".split():
+            plt.plot(all_stats[key], label=key)
+        for key, popstat in all_stats["population"]:
+            plt.matshow(popstat, cmap="bone")
+            plt.colorbar()
+            plt.title(key.name)
+        import pdb; pdb.set_trace()
 
     sympopstats = {}
     for symbatchstat, popstat in popstats.items():
