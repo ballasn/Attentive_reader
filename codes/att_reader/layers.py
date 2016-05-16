@@ -327,10 +327,13 @@ def bnlstm_layer(tparams, state_below,
             return _x[:, :, n*dim:(n+1)*dim]
         return _x[:, n*dim:(n+1)*dim]
 
-    def _step(mask, sbelow_, sbefore, cell_before, *args):
-        sbefore_ = bn(dot(sbefore, param('U')), gamma=param('recurrent_gammas'))
+    def _step(mask, sbelow, sbefore, cell_before, *args):
+        recurrent_term = bn(dot(sbefore, param('U')), gamma=param('recurrent_gammas'))
+        input_term = sbelow
+        if not options["bn_input_not"] and not options["bn_input_sequencewise"]:
+            input_term = bn(input_term, gamma=param('input_gammas'))
 
-        preact = sbefore_ + sbelow_ + param('b')
+        preact = recurrent_term + input_term + param('b')
 
         i = Sigmoid(_slice(preact, 0, dim))
         f = Sigmoid(_slice(preact, 1, dim))
@@ -366,11 +369,15 @@ def bnlstm_layer(tparams, state_below,
         elif mask.ndim == 2:
             mask = mask.dimshuffle(0, 1, 'x')
 
-        # batch-normalize input sequence-wise
-        lstm_state_below_ = bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask)
+        if options["bn_input_not"]:
+            # no input normalization (but keep parameters in graph so theano doesn't die)
+            lstm_state_below += 0* bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask)
+        elif options["bn_input_sequencewise"]:
+            # batch-normalize input sequence-wise
+            lstm_state_below = bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask)
 
         rval, updates = theano.scan(_step,
-                                    sequences=[mask, lstm_state_below_],
+                                    sequences=[mask, lstm_state_below],
                                     outputs_info = [init_state,
                                                     init_memory],
                                     name=prfx(prefix, '_layers'),

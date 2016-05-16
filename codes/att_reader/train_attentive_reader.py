@@ -101,6 +101,8 @@ if __name__ == '__main__':
     parser.add_argument("--use_dropout", default=1, type=int)
     parser.add_argument("--ms_nlayers", default=2, type=int)
     parser.add_argument("--bn-everywhere", action="store_true")
+    parser.add_argument("--bn-input-sequencewise", action="store_true")
+    parser.add_argument("--bn-input-not", action="store_true")
     parser.add_argument("--popstat-eval", action="store_true")
     parser.add_argument("--reloadm", default=0, type=int)
     args = parser.parse_args()
@@ -141,5 +143,7 @@ if __name__ == '__main__':
         'learning-rate': [args.lr],
         'batch_size': args.batch_size,
         'bn_everywhere': args.bn_everywhere,
+        'bn_input_sequencewise': args.bn_input_sequencewise,
+        'bn_input_not': args.bn_input_not,
         'popstat_eval': args.popstat_eval,
         'reload': [args.reloadm]})
