@@ -152,53 +152,68 @@ def get_inference_graph(inputs, batch_outputs, estimation_batches):
         print "NO BATCH STATISTICS FOUND IN GRAPH"
     #assert symbatchstats
 
+    def aggregate_varlen(aggregate, sample):
+        # grow to accomodate shape
+        aggregate = np.pad(aggregate,
+                           [(0, max(0, sample.shape[j] - aggregate.shape[j]))
+                            for j in range(aggregate.ndim)],
+                           mode="constant")
+        aggregate[tuple(map(slice, sample.shape))] += sample
+        return aggregate
+
     # take average of batch statistics over estimation_batches
     estimator_fn = theano.function(inputs, estimators, on_unused_input="warn")
     popstats = {}
-    all_stats = dict(batch={}, pop={})
+    coverages = {}
+    all_stats = dict(batch={})
     for i, batch in enumerate(estimation_batches):
         estimates = estimator_fn(**batch)
         for symbatchstat, estimator, estimate in equizip(symbatchstats, estimators, estimates):
             popstat = popstats.get(symbatchstat, np.ndarray([0] * estimate.ndim, dtype=np.float32))
+            popstats[symbatchstat] = aggregate_varlen(popstat, estimate)
 
-            # grow to accomodate this batch
-            popstat = np.pad(popstat,
-                             [(0, max(0, estimate.shape[j] - popstat.shape[j]))
-                              for j in range(popstat.ndim)],
-                             mode="constant")
-
-            popstat[tuple(map(slice, estimate.shape))] *= i / float(i + 1)
-            popstat[tuple(map(slice, estimate.shape))] += 1 / float(i + 1) * estimate
-
-            popstats[symbatchstat] = popstat
+            coverage = coverages.get(symbatchstat, np.ndarray([0] * estimate.ndim, dtype=np.float32))
+            coverages[symbatchstat] = aggregate_varlen(coverage, np.ones(estimate.shape))
 
             # record batch estimate for debugging
             all_stats["batch"].get(symbatchstat, []).append(estimate)
 
-        all_stats["population"] = popstats
+    for symbatchstat in popstats.keys():
+        popstats[symbatchstat] /= coverages[symbatchstat]
 
-        # record mask sum (for timestep coverage statistics)
-        for key in "desc_mask q_mask".split():
-            mask = batch[key]
-            total_mask = all_stats.get(key, np.array([], dtype=np.float32))
-            # grow to accommodate
-            total_mask = np.pad(total_mask,
-                                [(0, max(0, mask.shape[0] - total_mask.shape[0]))],
-                                mode="constant")
-            total_mask[:mask.shape[0]] += mask.sum(axis=1)
-            all_stats[key] = total_mask
+    all_stats["population"] = popstats
+    all_stats["coverage"] = coverages
 
     if True:
         # allow inspection of all_stats
         import matplotlib.pyplot as plt
-        plt.figure()
-        for key in "desc_mask q_mask".split():
-            plt.plot(all_stats[key], label=key)
-        for key, popstat in all_stats["population"]:
-            plt.matshow(popstat, cmap="bone")
-            plt.colorbar()
-            plt.title(key.name)
-        import pdb; pdb.set_trace()
+        for symbatchstat, popstat in all_stats["population"].items():
+            if popstat.ndim == 1:
+                plt.figure()
+                plt.hist(popstat)
+                plt.title(symbatchstat.tag.bn_label)
+            elif False:
+                plt.matshow(popstat, cmap="bone")
+                plt.colorbar()
+            else:
+                choice = np.random.choice(popstat.shape[1], size=(min(20, popstat.shape[1]),), replace=False)
+                fig, axes = plt.subplots(2, sharex=True)
+
+                axes[0].plot(popstat[:, choice])
+                axes[0].set_title("values")
+
+                # assume only two axes, 0 being time
+                axes[1].plot(coverages[symbatchstat][:, 0])
+                axes[1].set_title("support")
+                axes[1].set_ylabel("batches")
+                axes[1].set_xlabel("time steps")
+
+                fig.suptitle(symbatchstat.tag.bn_label)
+
+            plt.savefig("%s.pdf" % symbatchstat.tag.bn_label, bbox_inches="tight")
+        #plt.show()
+        #import pdb; pdb.set_trace()
+        np.savez_compressed("allstats.npz", **all_stats)
 
     sympopstats = {}
     for symbatchstat, popstat in popstats.items():

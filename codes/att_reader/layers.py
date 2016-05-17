@@ -11,11 +11,13 @@ from core.commons import Sigmoid, Tanh, Rect, global_trng, Linear, ELU
 """
 
 # batch normalization
-def bn(x, gamma=1., beta=0.):
+def bn(x, gamma=1., beta=0., prefix=""):
     assert x.ndim == 2
     mean, var = x.mean(axis=0), x.var(axis=0)
     mean.tag.bn_statistic = True
+    mean.tag.bn_label = prefix + "_mean"
     var.tag.bn_statistic = True
+    var.tag.bn_label = prefix + "_var"
     y = theano.tensor.nnet.bn.batch_normalization(
         inputs=x,
         gamma=gamma, beta=beta,
@@ -25,14 +27,16 @@ def bn(x, gamma=1., beta=0.):
     return y
 
 # sequence-wise batch normalization as in Laurent et al 2015
-def bn_sequence(x, gamma=1., beta=0., mask=None):
+def bn_sequence(x, gamma=1., beta=0., mask=None, prefix=""):
     assert x.ndim == 3
     n = mask.sum()
     n = theano.tensor.opt.Assert("mask all zero")(n, n > 0)
     mean = (x * mask / n).sum(axis=[0, 1])
     var = (((x - mean[None, None, :])**2) * mask / n).sum(axis=[0, 1])
     mean.tag.bn_statistic = True
+    mean.tag.bn_label = prefix + "_mean"
     var.tag.bn_statistic = True
+    var.tag.bn_label = prefix + "_var"
     y = theano.tensor.nnet.bn.batch_normalization(
         inputs=x.reshape((x.shape[0] * x.shape[1],) + tuple(x.shape[i] for i in range(2, x.ndim))),
         gamma=gamma, beta=beta,
@@ -122,7 +126,7 @@ def bnfflayer(tparams,
     W     = tparams[prfx(prefix, 'W'    )]
     gamma = tparams[prfx(prefix, 'gamma')]
     b     = tparams[prfx(prefix, 'b'    )] if use_bias else 0
-    return eval(activ)(bn(dot(state_below, W), gamma, b))
+    return eval(activ)(bn(dot(state_below, W), gamma, b, prefix=prefix))
 
 
 # GRU layer
@@ -328,10 +332,10 @@ def bnlstm_layer(tparams, state_below,
         return _x[:, n*dim:(n+1)*dim]
 
     def _step(mask, sbelow, sbefore, cell_before, *args):
-        recurrent_term = bn(dot(sbefore, param('U')), gamma=param('recurrent_gammas'))
+        recurrent_term = bn(dot(sbefore, param('U')), gamma=param('recurrent_gammas'), prefix=prefix + "_recurrent")
         input_term = sbelow
         if not options["bn_input_not"] and not options["bn_input_sequencewise"]:
-            input_term = bn(input_term, gamma=param('input_gammas'))
+            input_term = bn(input_term, gamma=param('input_gammas'), prefix=prefix + "_input")
 
         preact = recurrent_term + input_term + param('b')
 
@@ -343,7 +347,7 @@ def bnlstm_layer(tparams, state_below,
         c = f * cell_before + i * c
         c = mask * c + (1. - mask) * cell_before
 
-        c_ = bn(c, gamma=param('output_gammas'), beta=param('output_betas'))
+        c_ = bn(c, gamma=param('output_gammas'), beta=param('output_betas'), prefix=prefix + "_output")
         h = o * tensor.tanh(c_)
         h = mask * h + (1. - mask) * sbefore
 
@@ -371,10 +375,10 @@ def bnlstm_layer(tparams, state_below,
 
         if options["bn_input_not"]:
             # no input normalization (but keep parameters in graph so theano doesn't die)
-            lstm_state_below += 0* bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask)
+            lstm_state_below += 0* bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask, prefix=prefix + "_input")
         elif options["bn_input_sequencewise"]:
             # batch-normalize input sequence-wise
-            lstm_state_below = bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask)
+            lstm_state_below = bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask, prefix=prefix + "_input")
 
         rval, updates = theano.scan(_step,
                                     sequences=[mask, lstm_state_below],
