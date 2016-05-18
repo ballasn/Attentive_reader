@@ -11,9 +11,13 @@ from core.commons import Sigmoid, Tanh, Rect, global_trng, Linear, ELU
 """
 
 # batch normalization
-def bn(x, gamma=1., beta=0.):
+def bn(x, gamma=1., beta=0., prefix=""):
     assert x.ndim == 2
     mean, var = x.mean(axis=0), x.var(axis=0)
+    mean.tag.bn_statistic = True
+    mean.tag.bn_label = prefix + "_mean"
+    var.tag.bn_statistic = True
+    var.tag.bn_label = prefix + "_var"
     y = theano.tensor.nnet.bn.batch_normalization(
         inputs=x,
         gamma=gamma, beta=beta,
@@ -103,7 +107,7 @@ def bnfflayer(tparams,
     W     = tparams[prfx(prefix, 'W'    )]
     gamma = tparams[prfx(prefix, 'gamma')]
     b     = tparams[prfx(prefix, 'b'    )] if use_bias else 0
-    return eval(activ)(bn(dot(state_below, W), gamma, b))
+    return eval(activ)(bn(dot(state_below, W), gamma, b, prefix=prefix))
 
 
 # GRU layer
@@ -309,10 +313,10 @@ def bnlstm_layer(tparams, state_below,
         return _x[:, n*dim:(n+1)*dim]
 
     def _step(mask, sbelow, sbefore, cell_before, *args):
-        sbelow_ = bn(sbelow, gamma=param('input_gammas'))
-        sbefore_ = bn(dot(sbefore, param('U')), gamma=param('recurrent_gammas'))
+        recurrent_term = bn(dot(sbefore, param('U')), gamma=param('recurrent_gammas'), prefix=prefix + "_recurrent")
+        input_term = bn(sbelow, gamma=param('input_gammas'), prefix=prefix + "_input")
 
-        preact = sbefore_ + sbelow_ + param('b')
+        preact = recurrent_term + input_term + param('b')
 
         i = Sigmoid(_slice(preact, 0, dim))
         f = Sigmoid(_slice(preact, 1, dim))
@@ -322,7 +326,7 @@ def bnlstm_layer(tparams, state_below,
         c = f * cell_before + i * c
         c = mask * c + (1. - mask) * cell_before
 
-        c_ = bn(c, gamma=param('output_gammas'), beta=param('output_betas'))
+        c_ = bn(c, gamma=param('output_gammas'), beta=param('output_betas'), prefix=prefix + "_output")
         h = o * tensor.tanh(c_)
         h = mask * h + (1. - mask) * sbefore
 

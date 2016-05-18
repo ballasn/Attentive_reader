@@ -1,9 +1,11 @@
 import cPickle as pkl
+import itertools
 import numpy
 import copy
 import theano
 from theano import tensor
 
+import sys
 import os
 import time
 
@@ -19,6 +21,7 @@ from pkl_data_iterator import load_data as load_pkl_data
 from core.utils import ensure_dir_exists, safe_grad, sharedX
 from core.learning_rule import Adasecant, Adam, RMSPropMomentum, AdaDelta
 from core.utils.nnet_utils import running_ave
+import warnings
 
 
 profile = False
@@ -79,6 +82,8 @@ def prepare_data_sents(seqs_x, seqs_y):
             x_mask[:lengths_w[idx][i], i, idx] = 1.
         if x[:, :, idx].sum((0, 1)) <= 1:
             import ipdb; ipdb.set_trace()
+            warnings.warn("There is a problem with the data at this index.")
+
         y[:lengths_y[idx], idx] = s_y
         y_mask[:lengths_y[idx], idx] = 1.
 
@@ -145,6 +150,7 @@ def train(dim_word_desc=400,# word vector dimensionality
           use_dropout=True,
           reload_=True,
           bn_everywhere=False,
+          popstat_eval=False,
           **opt_ds):
 
     ensure_dir_exists(model_dir)
@@ -224,8 +230,7 @@ def train(dim_word_desc=400,# word vector dimensionality
                 inps_d['q_mask'], \
                 inps_d['ans'], \
                 inps_d['wlen'],
-                inps_d['slen'], inps_d['qlen'],\
-                inps_d['ent_mask']
+                inps_d['slen'], inps_d['qlen']
                 ]
     else:
         inps = [inps_d["desc"], \
@@ -234,8 +239,7 @@ def train(dim_word_desc=400,# word vector dimensionality
                 inps_d['q_mask'], \
                 inps_d['ans'], \
                 inps_d['wlen'], \
-                inps_d['qlen'], \
-                inps_d['ent_mask']]
+                inps_d['qlen']]
 
     outs = [cost, errors, probs, alphas]
     if ent_errors:
@@ -266,6 +270,77 @@ def train(dim_word_desc=400,# word vector dimensionality
     grads = safe_grad(cost, itemlist(tparams))
     print 'Done'
 
+    if popstat_eval:
+        # evaluate on the full test set
+        _, full_valid, full_test = load_data(path=datasets[0],
+                               valid_path=valid_datasets[0],
+                               test_path=valid_datasets[1],
+                               batch_size=batch_size,
+                               **opt_ds)
+
+        def train_batches():
+            if train.done:
+                train.reset()
+            for i, (d_, q_, a, em) in enumerate(train):
+                #if i > 10:
+                #    break
+                sys.stderr.write(".")
+                d, d_mask, q, q_mask, dlen, qlen = prepare_data(d_, q_)
+                if d is None:
+                    print 'Minibatch with zero sample under length ', maxlen
+                    uidx -= 1
+                    continue
+                yield dict(desc=d, desc_mask=d_mask,
+                           q=q, q_mask=q_mask,
+                           ans=a, wlen=dlen, qlen=qlen)
+            sys.stdout.write("\n")
+
+        use_noise.set_value(0.)
+
+        print "estimating population statistics and constructing inference graph"
+        from popstats import get_inference_graph
+        popouts = get_inference_graph(inps, outs, train_batches())
+        print "compiling f_pop_log_probs"
+        f_pop_log_probs = theano.function(inps, popouts, profile=profile)
+
+        for label, iterator in [("valid", valid),
+                                ("full_valid", full_valid),
+                                ("full_test", full_test)]:
+            if iterator.done:
+                iterator.reset()
+
+            (costs, errs, probs,
+             alphas, error_ent, error_dent) = eval_model(
+                f_pop_log_probs,
+                prepare_data if not opt_ds['use_sent_reps']
+                else prepare_data_sents,
+                model_options,
+                iterator,
+                use_sent_rep=opt_ds['use_sent_reps'])
+
+            alphas_ = numpy.concatenate([a.argmax(0) for a in alphas.tolist()], axis=0)
+
+            result = dict(errs=errs.mean(),
+                          costs=costs.mean(),
+                          err_ent=error_ent,
+                          err_desc_ent=error_dent,
+                          alphas_mean=alphas_.mean(),
+                          alphas_std=alphas_.std(),
+                          alphas_ent=-negentropy(alphas),
+                          probs_mean=probs.argmax(1).mean(),
+                          probs_std=probs.argmax(1).std())
+
+            print "popstat %s evaluation result:" % label
+            for key, value in result.items():
+                print "%20s %f" % (key, value)
+
+        print "saving popstat graph"
+        import blocks.serialization, functools as ft
+        mpath_popstats = os.path.join(model_dir, prfx("popstats", saveto))
+        blocks.serialization.secure_dump(popouts, "%s.pkl" % mpath_popstats,
+                                         dump_function=ft.partial(blocks.serialization.dump, use_cpickle=True))
+        sys.exit(0)
+
     # Gradient clipping:
     if clip_c > 0.:
         g2 = get_norms(grads)
@@ -273,7 +348,6 @@ def train(dim_word_desc=400,# word vector dimensionality
             grads[p] = tensor.switch(g2 > (clip_c**2),
                                      (g / tensor.sqrt(g2 + 1e-8)) * clip_c,
                                      g)
-    inps.pop()
     if optimizer.lower() == "adasecant":
         learning_rule = Adasecant(delta_clip=25.0,
                                   use_adagrad=True,

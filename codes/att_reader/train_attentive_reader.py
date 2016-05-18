@@ -20,7 +20,8 @@ def main(job_id, params):
                                       dvocab['!']]}
     cost_mask = create_entity_mask(dvocab, eyem)
     pp.pprint(params)
-    new_model_name = create_model_name(params['model'], params)
+    #new_model_name = create_model_name(params['model'], params)
+    new_model_name = params['model'][0]
 
     print "The model will be saved to %s" % new_model_name
     validerr, validcost = train(saveto=new_model_name,
@@ -63,6 +64,7 @@ def main(job_id, params):
                                 patience=1000,
                                 use_dropout=params['use-dropout'][0],
                                 bn_everywhere=params['bn_everywhere'],
+                                popstat_eval=params['popstat_eval'],
                                 **sent_opts)
 
     return validerr, validcost
@@ -92,6 +94,7 @@ if __name__ == '__main__':
     parser.add_argument("--use_bidir", default=0, type=int)
     parser.add_argument("--ms_nlayers", default=2, type=int)
     parser.add_argument("--bn-everywhere", action="store_true")
+    parser.add_argument("--popstat-eval", action="store_true")
     parser.add_argument("--reloadm", default=0, type=int)
     args = parser.parse_args()
 
@@ -110,8 +113,8 @@ if __name__ == '__main__':
         'dim_word_desc': [int(args.dim)],
         'use_dq_sims': args.use_dq_sims,
         'use_desc_skip_c_g': args.use_desc_skip_c_g,
-        'valid_datasets': ['/data/lisatmp4/gulcehrc/rc-data/cnn/cnn_valid_data2.h5',
-                           '/data/lisatmp4/gulcehrc/rc-data/cnn/cnn_valid_data2.h5'],
+        'valid_datasets': ['/data/lisatmp4/gulcehrc/reading_comprehension_data/cleaned_cnn/cnn_validation_data.h5',
+                           '/data/lisatmp4/gulcehrc/reading_comprehension_data/cleaned_cnn/cnn_test_data.h5'],
         'decay-c': [0.],
         'use_bidir': args.use_bidir,
         'ms_nlayers': args.ms_nlayers,
@@ -131,4 +134,5 @@ if __name__ == '__main__':
         'learning-rate': [args.lr],
         'batch_size': args.batch_size,
         'bn_everywhere': args.bn_everywhere,
+        'popstat_eval': args.popstat_eval,
         'reload': [args.reloadm]})

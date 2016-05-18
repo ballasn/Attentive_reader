@@ -327,7 +327,6 @@ def build_model(tparams,
     q = tensor.matrix('q', dtype="uint32")
     q_mask = tensor.matrix('q_mask', dtype="float32")
     y = tensor.vector('ans', dtype='uint32')
-    em = tensor.matrix('entity_mask', dtype="float32")
 
     wlen = tensor.scalar('wlen', dtype='uint32')
     qlen = tensor.scalar('qlen', dtype='uint32')
@@ -351,7 +350,6 @@ def build_model(tparams,
         q.tag.test_value = numpy.array(q_).astype("uint32")
         q_mask.tag.test_value = numpy.array(q_mask_).astype("float32")
         y.tag.test_value = numpy.array(a_).astype("uint32")
-        em.tag.test_value = numpy.array(em_).astype("float32")
         wlen.tag.test_value = numpy.array(wlen_).astype("uint32")
         qlen.tag.test_value = numpy.array(qlen_).astype("uint32")
 
@@ -538,8 +536,7 @@ def build_model(tparams,
     # compute the cost
     cost, errors, ent_errors, ent_derrors = nll_simple(y,
                                                        probs,
-                                                       cost_ent_mask=cost_mask,
-                                                       cost_ent_desc_mask=em)
+                                                       cost_ent_mask=cost_mask)
     cost = cost #+ 1e-2 * hinge_cost
     #cost = hinge_cost
     vals = OrderedDict({'desc': x,
@@ -548,7 +545,6 @@ def build_model(tparams,
                         'q_mask': q_mask,
                         'ans': y,
                         'wlen': wlen,
-                        'ent_mask': em,
                         'qlen': qlen})
 
     if options['use_sent_reps']:
@@ -578,14 +574,13 @@ def eval_model(f_log_probs,
         d = batch[0]
         q = batch[1]
         a = batch[2]
-        em = batch[3]
         n_done += len(d)
         if not use_sent_rep:
             d, d_mask, q, q_mask, dlen, qlen = prepare_data(d, q)
             outs = f_log_probs(d,
                                                            d_mask, q,
                                                            q_mask, a, dlen,
-                                                           qlen, em)
+                                                           qlen)
         else:
             d, d_mask, q, q_mask, dlen, slen, \
                     qlen = prepare_data(d, q)
@@ -596,7 +591,7 @@ def eval_model(f_log_probs,
                                                            a,
                                                            dlen,
                                                            slen,
-                                                           qlen, em)
+                                                           qlen)
 
         if len(outs) == 4:
             pcosts, perrors, pprobs, palphas = list(outs)
