@@ -1,4 +1,4 @@
-import sys
+import sys, cPickle as pkl
 import theano, itertools, pprint, copy, numpy as np, theano.tensor as T
 from collections import OrderedDict
 from theano.gof.op import ops_with_inner_function
@@ -163,31 +163,39 @@ def get_inference_graph(inputs, batch_outputs, estimation_batches):
 
     # take average of batch statistics over estimation_batches
     estimator_fn = theano.function(inputs, estimators, on_unused_input="warn")
-    popstats = {}
-    coverages = {}
-    all_stats = dict(batch={})
+    batchstats = {}
     for i, batch in enumerate(estimation_batches):
         estimates = estimator_fn(**batch)
         for symbatchstat, estimator, estimate in equizip(symbatchstats, estimators, estimates):
-            popstat = popstats.get(symbatchstat, np.ndarray([0] * estimate.ndim, dtype=np.float32))
-            popstats[symbatchstat] = aggregate_varlen(popstat, estimate)
+            batchstats.setdefault(symbatchstat, []).append(estimate)
 
-            coverage = coverages.get(symbatchstat, np.ndarray([0] * estimate.ndim, dtype=np.float32))
-            coverages[symbatchstat] = aggregate_varlen(coverage, np.ones(estimate.shape))
+    popstats = {}
+    coverages = {}
+    for symbatchstat in symbatchstats:
+        if batchstats[symbatchstat][0].ndim > 1:
+            # assume first axis is time
+            maxlen = max(map(len, batchstats[symbatchstat]))
+            # pad all batch stats to maxlen by repeating last time step
+            padded_batchstats = [
+                np.pad(batchstat,
+                       [(0, maxlen - len(batchstat))] + [(0, 0) for _ in range(1, batchstat.ndim)],
+                       mode="edge")
+                for batchstat in batchstats[symbatchstat]]
+            popstat = sum(bs / len(padded_batchstats) for bs in padded_batchstats)
 
-            # record batch estimate for debugging
-            all_stats["batch"].get(symbatchstat, []).append(estimate)
-
-    for symbatchstat in popstats.keys():
-        popstats[symbatchstat] /= coverages[symbatchstat]
-
-    all_stats["population"] = popstats
-    all_stats["coverage"] = coverages
+            coverages[symbatchstat] = (
+                np.arange(maxlen)[None, :] <
+                np.asarray(list(map(len, batchstats[symbatchstat])))[:, None]
+            ).sum(axis=0)
+        else:
+            # not time-separated, just average as is
+            popstat = sum(bs / len(batchstats[symbatchstat]) for bs in batchstats[symbatchstat])
+        popstats[symbatchstat] = popstat
 
     if True:
         # allow inspection of all_stats
         import matplotlib.pyplot as plt
-        for symbatchstat, popstat in all_stats["population"].items():
+        for symbatchstat, popstat in popstats.items():
             if popstat.ndim == 1:
                 plt.figure()
                 plt.hist(popstat)
@@ -202,8 +210,7 @@ def get_inference_graph(inputs, batch_outputs, estimation_batches):
                 axes[0].plot(popstat[:, choice])
                 axes[0].set_title("values")
 
-                # assume only two axes, 0 being time
-                axes[1].plot(coverages[symbatchstat][:, 0])
+                axes[1].plot(coverages[symbatchstat])
                 axes[1].set_title("support")
                 axes[1].set_ylabel("batches")
                 axes[1].set_xlabel("time steps")
@@ -213,7 +220,8 @@ def get_inference_graph(inputs, batch_outputs, estimation_batches):
             plt.savefig("%s.pdf" % symbatchstat.tag.bn_label, bbox_inches="tight")
         #plt.show()
         #import pdb; pdb.set_trace()
-        np.savez_compressed("allstats.npz", **all_stats)
+        pkl.dump(dict(batchstats=batchstats, coverages=coverages, popstats=popstats),
+                 open("allstats.pkl", "wb"))
 
     sympopstats = {}
     for symbatchstat, popstat in popstats.items():
