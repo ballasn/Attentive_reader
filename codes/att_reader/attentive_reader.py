@@ -28,7 +28,7 @@ profile = False
 
 
 # batch preparation
-def prepare_data(seqs_x, seqs_y):
+def prepare_data(seqs_x, seqs_y, repeat_pad = False):
     seqs_x = [s[:-1] for s in seqs_x]
     seqs_y = [s[:-1] for s in seqs_y]
 
@@ -45,9 +45,19 @@ def prepare_data(seqs_x, seqs_y):
     y_mask = numpy.zeros((maxlen_y, n_samples)).astype('float32')
 
     for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
-        x[:lengths_x[idx], idx] = s_x
+
+        # pad with repetitions while maintaining the zero at the end
+        if repeat_pad:
+            s_x = numpy.concatenate([s_x, [0]])
+            s_y = numpy.concatenate([s_y, [0]])
+            x[:, idx] = s_x[numpy.arange(maxlen_x) % (lengths_x[idx] + 1)]
+            y[:, idx] = s_y[numpy.arange(maxlen_y) % (lengths_y[idx] + 1)]
+        else:
+            x[:lengths_x[idx], idx] = s_x
+            y[:lengths_y[idx], idx] = s_y
+
+        # FIXME: should these go up to lengths_x[idx] + 1?
         x_mask[:lengths_x[idx], idx] = 1.
-        y[:lengths_y[idx], idx] = s_y
         y_mask[:lengths_y[idx], idx] = 1.
 
     return x, x_mask, y, y_mask, maxlen_x, maxlen_y
@@ -151,6 +161,7 @@ def train(dim_word_desc=400,# word vector dimensionality
           reload_=True,
           bn_everywhere=False,
           popstat_eval=False,
+          repeat_pad=False,
           **opt_ds):
 
     ensure_dir_exists(model_dir)
@@ -248,10 +259,15 @@ def train(dim_word_desc=400,# word vector dimensionality
     if ent_derrors:
         outs += [ent_derrors]
 
+
+    ### Get batch statistics
+
     # before any regularizer
     print 'Building f_log_probs...',
     f_log_probs = theano.function(inps, outs, profile=profile)
     print 'Done'
+
+    ### Construct a valid graph
 
     # Apply weight decay on the feed-forward connections
     if decay_c > 0.:
@@ -285,7 +301,8 @@ def train(dim_word_desc=400,# word vector dimensionality
                 #if i > 10:
                 #    break
                 sys.stderr.write(".")
-                d, d_mask, q, q_mask, dlen, qlen = prepare_data(d_, q_)
+                d, d_mask, q, q_mask, dlen, qlen = prepare_data(d_, q_,
+                                                                repeat_pad=model_options['repeat_pad'])
                 if d is None:
                     print 'Minibatch with zero sample under length ', maxlen
                     uidx -= 1
@@ -432,7 +449,8 @@ def train(dim_word_desc=400,# word vector dimensionality
                                                            slen,
                                                            qlen)
             else:
-                d, d_mask, q, q_mask, dlen, qlen = prepare_data(d_, q_)
+                d, d_mask, q, q_mask, dlen, qlen = prepare_data(d_, q_,
+                                                                repeat_pad=options['repeat_pad'])
 
                 if d is None:
                     print 'Minibatch with zero sample under length ', maxlen

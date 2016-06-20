@@ -65,6 +65,7 @@ def main(job_id, params):
                                 use_dropout=params['use-dropout'][0],
                                 bn_everywhere=params['bn_everywhere'],
                                 popstat_eval=params['popstat_eval'],
+                                repeat_pad=params['repeat_pad'],
                                 **sent_opts)
 
     return validerr, validcost
@@ -94,6 +95,7 @@ if __name__ == '__main__':
     parser.add_argument("--use_bidir", default=0, type=int)
     parser.add_argument("--ms_nlayers", default=2, type=int)
     parser.add_argument("--bn-everywhere", action="store_true")
+    parser.add_argument("--repeat-pad", action="store_true")
     parser.add_argument("--popstat-eval", action="store_true")
     parser.add_argument("--reloadm", default=0, type=int)
     args = parser.parse_args()
@@ -135,4 +137,5 @@ if __name__ == '__main__':
         'batch_size': args.batch_size,
         'bn_everywhere': args.bn_everywhere,
         'popstat_eval': args.popstat_eval,
+        'repeat_pad': args.repeat_pad,
         'reload': [args.reloadm]})

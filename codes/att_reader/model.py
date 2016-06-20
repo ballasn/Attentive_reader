@@ -340,7 +340,8 @@ def build_model(tparams,
         if options['use_sent_reps']:
             d_, d_mask_, q_, q_mask_, wlen_, slen_, qlen_ = prepare_data_fn(d_, q_)
         else:
-            d_, d_mask_, q_, q_mask_, wlen_, qlen_ = prepare_data_fn(d_, q_)
+            d_, d_mask_, q_, q_mask_, wlen_, qlen_ = prepare_data_fn(d_, q_,
+                                                                     repeat_pad=options['repeat_pad'])
 
         print "Debugging is enabled."
 
@@ -576,7 +577,8 @@ def eval_model(f_log_probs,
         a = batch[2]
         n_done += len(d)
         if not use_sent_rep:
-            d, d_mask, q, q_mask, dlen, qlen = prepare_data(d, q)
+            d, d_mask, q, q_mask, dlen, qlen = prepare_data(d, q,
+                                                            repeat_pad=options['repeat_pad'])
             outs = f_log_probs(d,
                                                            d_mask, q,
                                                            q_mask, a, dlen,
