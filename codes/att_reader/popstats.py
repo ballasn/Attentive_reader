@@ -165,13 +165,15 @@ def get_inference_graph(inputs, batch_outputs, estimation_batches):
     estimator_fn = theano.function(inputs, estimators, on_unused_input="warn")
     batchstats = {}
     for i, batch in enumerate(estimation_batches):
+        if i > 5000:
+            break
         estimates = estimator_fn(**batch)
         for symbatchstat, estimator, estimate in equizip(symbatchstats, estimators, estimates):
             batchstats.setdefault(symbatchstat, []).append(estimate)
 
     popstats = {}
     coverages = {}
-    for symbatchstat in symbatchstats:
+    for idx, symbatchstat in enumerate(symbatchstats):
         if batchstats[symbatchstat][0].ndim > 1:
             # assume first axis is time
             maxlen = max(map(len, batchstats[symbatchstat]))
@@ -192,7 +194,7 @@ def get_inference_graph(inputs, batch_outputs, estimation_batches):
             popstat = sum(bs / len(batchstats[symbatchstat]) for bs in batchstats[symbatchstat])
         popstats[symbatchstat] = popstat
 
-    if True:
+    if False:
         # allow inspection of all_stats
         import matplotlib.pyplot as plt
         for symbatchstat, popstat in popstats.items():
@@ -221,7 +223,7 @@ def get_inference_graph(inputs, batch_outputs, estimation_batches):
         #plt.show()
         #import pdb; pdb.set_trace()
         pkl.dump(dict(batchstats=batchstats, coverages=coverages, popstats=popstats),
-                 open("allstats.pkl", "wb"))
+                 open("/Tmp/ballasn/allstats.pkl", "wb"))
 
     sympopstats = {}
     for symbatchstat, popstat in popstats.items():

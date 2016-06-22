@@ -160,6 +160,7 @@ def train(dim_word_desc=400,# word vector dimensionality
           use_dropout=True,
           reload_=True,
           bn_everywhere=False,
+          bn_input_sequencewise=False,
           popstat_eval=False,
           repeat_pad=False,
           **opt_ds):
@@ -183,6 +184,7 @@ def train(dim_word_desc=400,# word vector dimensionality
 
     # reload options and parameters
     if reload_:
+        import pdb; pdb.set_trace()
         print "Reloading the model."
         if os.path.exists(mpath_best):
             print "Reloading the best model from %s." % mpath_best
@@ -320,9 +322,9 @@ def train(dim_word_desc=400,# word vector dimensionality
         print "compiling f_pop_log_probs"
         f_pop_log_probs = theano.function(inps, popouts, profile=profile)
 
-        for label, iterator in [("valid", valid),
-                                ("full_valid", full_valid),
-                                ("full_test", full_test)]:
+        for label, iterator in [("valid", valid)]: #,
+                                #("full_valid", full_valid),
+                                #("full_test", full_test)]:
             if iterator.done:
                 iterator.reset()
 
@@ -351,7 +353,7 @@ def train(dim_word_desc=400,# word vector dimensionality
             for key, value in result.items():
                 print "%20s %f" % (key, value)
 
-        print "saving popstat graph"
+        #print "saving popstat graph"
         import blocks.serialization, functools as ft
         mpath_popstats = os.path.join(model_dir, prfx("popstats", saveto))
         blocks.serialization.secure_dump(popouts, "%s.pkl" % mpath_popstats,
@@ -450,7 +452,7 @@ def train(dim_word_desc=400,# word vector dimensionality
                                                            qlen)
             else:
                 d, d_mask, q, q_mask, dlen, qlen = prepare_data(d_, q_,
-                                                                repeat_pad=options['repeat_pad'])
+                                                                repeat_pad=model_options['repeat_pad'])
 
                 if d is None:
                     print 'Minibatch with zero sample under length ', maxlen
