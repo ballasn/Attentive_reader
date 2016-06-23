@@ -162,11 +162,13 @@ def build_bidir_model(inp,
     assert name is not None
     assert sfx is not None
 
+    n_timesteps = inp.shape[0]
+    n_samples = inp.shape[1]
+
+
     # #inpr = inp[::-1]
     # inpr_mask = inp_mask[::-1]
 
-    # n_timesteps = inp.shape[0]
-    # n_samples = inp.shape[1]
 
     # emb = dot(inp, tparams['Wemb_%s' % sfx])
     # emb = emb.reshape([n_timesteps, n_samples, -1])
@@ -175,7 +177,7 @@ def build_bidir_model(inp,
     #     emb = dropout_layer(emb, use_noise,
     #                         p=options['dropout_rate'])
 
-    #embr = emb[::-1]#embr.reshape([n_timesteps, n_samples, -1])
+    # embr = emb[::-1]#embr.reshape([n_timesteps, n_samples, -1])
 
 
     # generate reverse batch. involves a GpuAdvancedSubtensor that takes ridiculously
@@ -400,7 +402,8 @@ def build_model(tparams,
                                               name="encoder_desc_word")
 
         desc_wrep = concatenate([proj_wx[0],
-                                proj_wxr[0][::-1]],
+                                 reverse_realign(proj_wxr[0], word_mask, batch_axis=1, time_axis=0)],
+                                #proj_wxr[0][::-1]],
                                 axis=-1)
     else:
         proj_wx = build_nonbidir_model(x_rshp,
@@ -436,9 +439,16 @@ def build_model(tparams,
 
             proj_x, proj_xr = proj_sx, proj_sxr
             desc_mask = sent_mask.dimshuffle(0, 1, 'x')
+            desc_rep = concatenate([proj_x[0],
+                                    reverse_realign(proj_sxr[0], sent_mask, batch_axis=1, time_axis=0)],
+                                   axis=-1)
         else:
             proj_x, proj_xr = proj_wx, proj_wxr
             desc_mask = word_mask.dimshuffle(0, 1, 'x')
+            desc_rep = concatenate([proj_x[0],
+                                    reverse_realign(proj_wxr[0], word_mask, batch_axis=1, time_axis=0)],
+                                   axis=-1)
+
 
         """
         Build question bidir RNN
@@ -452,12 +462,11 @@ def build_model(tparams,
                                             use_noise=use_noise,
                                             name="encoder_q")
 
-        desc_rep = concatenate([proj_x[0],
-                                proj_xr[0][::-1]],
-                                axis=-1)
 
+        import pdb; pdb.set_trace()
         q_rep = concatenate([proj_q[0][-1],
-                            proj_qr[0][::-1][0]],
+                             reverse_realign(proj_qr[0], q_mask, batch_axis=1, time_axis=0)[0]],
+                            #proj_qr[0][::-1][0]],
                             axis=-1)
 
     else:
