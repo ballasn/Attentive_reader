@@ -18,6 +18,8 @@ from core.commons import Sigmoid, Tanh, Softmax, ELU
 from core.costs import nll_simple, multiclass_hinge_loss
 
 from collections import OrderedDict
+from reverse_realign import reverse_realign
+
 
 
 profile = False
@@ -160,18 +162,38 @@ def build_bidir_model(inp,
     assert name is not None
     assert sfx is not None
 
-    #inpr = inp[::-1]
-    inpr_mask = inp_mask[::-1]
+    # #inpr = inp[::-1]
+    # inpr_mask = inp_mask[::-1]
 
-    n_timesteps = inp.shape[0]
-    n_samples = inp.shape[1]
+    # n_timesteps = inp.shape[0]
+    # n_samples = inp.shape[1]
 
-    emb = dot(inp, tparams['Wemb_%s' % sfx])
-    emb = emb.reshape([n_timesteps, n_samples, -1])
+    # emb = dot(inp, tparams['Wemb_%s' % sfx])
+    # emb = emb.reshape([n_timesteps, n_samples, -1])
 
-    if use_dropout:
-        emb = dropout_layer(emb, use_noise,
-                            p=options['dropout_rate'])
+    # if use_dropout:
+    #     emb = dropout_layer(emb, use_noise,
+    #                         p=options['dropout_rate'])
+
+    #embr = emb[::-1]#embr.reshape([n_timesteps, n_samples, -1])
+
+
+    # generate reverse batch. involves a GpuAdvancedSubtensor that takes ridiculously
+    # long if you do it on the embedding, so we reverse before the embedding and then
+    # recompute the embedding for the reverse batch even if it's just a reshuffling of
+    # the forward batch.
+    inpr = reverse_realign(inp, inp_mask, batch_axis=1, time_axis=0)
+    inpr_mask = inp_mask
+
+    def embed(inp):
+        emb = dot(inp, tparams["Wemb_%s" % sfx])
+        emb = emb.reshape([n_timesteps, n_samples, -1])
+        if use_dropout:
+            emb = dropout_layer(emb, use_noise, p=options['dropout_rate'])
+        return emb
+
+    emb = embed(inp)
+    embr = embed(inpr)
 
     """
     Forward RNN
@@ -188,7 +210,6 @@ def build_bidir_model(inp,
     Reverse RNN.
     """
     #embr = dot(inpr, tparams['Wemb_%s' % sfx])
-    embr = emb[::-1]#embr.reshape([n_timesteps, n_samples, -1])
     projr = get_layer(options[name])[1](tparams=tparams,
                                         state_below=embr,
                                         options=options,
