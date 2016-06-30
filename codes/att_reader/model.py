@@ -401,8 +401,22 @@ def build_model(tparams,
                                               use_noise=use_noise,
                                               name="encoder_desc_word")
 
+        #from theano.tests.breakpoint import PdbBreakpoint
+        #breakpointOp = PdbBreakpoint("rev1")
+        #proj_wxr[0] = breakpointOp(1., proj_wxr[0])
+
+
+        #reverse_projwx = reverse_realign(proj_wxr[0], word_mask.dimshuffle(0, 1, 'x'), batch_axis=1, time_axis=0)
+        #reverse_projwx1 = breakpointOp(1., reverse_projwx, proj_wxr[0])[0]
+
+        #reverse_projwx = reverse_realign(proj_wxr[0], word_mask.dimshuffle(0, 1, 'x'), batch_axis=1, time_axis=0)
+        #reverse_projwx2 = breakpointOp(1., reverse_projwx, proj_wxr[0])[0]Q
+
+        #import pdb; pdb.set_trace()
+        #proj_wxr[0] = reverse_projwx1 + reverse_projwx2
+
         desc_wrep = concatenate([proj_wx[0],
-                                 reverse_realign(proj_wxr[0], word_mask, batch_axis=1, time_axis=0)],
+                                 reverse_realign(proj_wxr[0], word_mask.dimshuffle(0, 1, 'x'), batch_axis=1, time_axis=0)],
                                 #proj_wxr[0][::-1]],
                                 axis=-1)
     else:
@@ -420,6 +434,7 @@ def build_model(tparams,
 
     if options['use_bidir']:
         if options['use_sent_reps']:
+            assert False
             desc_wrep = desc_wrep.reshape((x.shape[0],
                                            x.shape[1],
                                            x.shape[2],
@@ -439,16 +454,10 @@ def build_model(tparams,
 
             proj_x, proj_xr = proj_sx, proj_sxr
             desc_mask = sent_mask.dimshuffle(0, 1, 'x')
-            desc_rep = concatenate([proj_x[0],
-                                    reverse_realign(proj_sxr[0], sent_mask, batch_axis=1, time_axis=0)],
-                                   axis=-1)
         else:
             proj_x, proj_xr = proj_wx, proj_wxr
             desc_mask = word_mask.dimshuffle(0, 1, 'x')
-            desc_rep = concatenate([proj_x[0],
-                                    reverse_realign(proj_wxr[0], word_mask, batch_axis=1, time_axis=0)],
-                                   axis=-1)
-
+            proj_xr = reverse_realign(proj_wxr[0], word_mask.dimshuffle(0, 1, 'x'), batch_axis=1, time_axis=0)
 
         """
         Build question bidir RNN
@@ -462,10 +471,13 @@ def build_model(tparams,
                                             use_noise=use_noise,
                                             name="encoder_q")
 
+        desc_rep = concatenate([proj_x[0],
+                                proj_xr],
+                                #proj_xr[0][::-1]],
+                                axis=-1)
 
-        import pdb; pdb.set_trace()
         q_rep = concatenate([proj_q[0][-1],
-                             reverse_realign(proj_qr[0], q_mask, batch_axis=1, time_axis=0)[0]],
+                             reverse_realign(proj_qr[0], q_mask.dimshuffle(0, 1, 'x'), batch_axis=1, time_axis=0)[0]],
                             #proj_qr[0][::-1][0]],
                             axis=-1)
 
@@ -496,13 +508,13 @@ def build_model(tparams,
         Build question bidir RNN
         """
         proj_q = build_nonbidir_model(q, q_mask,
-                                            tparams,
-                                            options, sfx="word",
-                                            nsteps=qlen,
-                                            truncate=options['truncate'],
-                                            use_dropout=options['use_dropout'],
-                                            use_noise=use_noise,
-                                            name="encoder_q")
+                                      tparams,
+                                      options, sfx="word",
+                                      nsteps=qlen,
+                                      truncate=options['truncate'],
+                                      use_dropout=options['use_dropout'],
+                                      use_noise=use_noise,
+                                      name="encoder_q")
 
         desc_rep = proj_x
         q_rep = proj_q[-1]
