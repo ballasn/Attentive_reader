@@ -75,6 +75,7 @@ def main(job_id, params):
                                 bn_input_sequencewise=params['bn_input_sequencewise'],
                                 bn_input_not=params['bn_input_not'],
                                 popstat_eval=params['popstat_eval'],
+                                repeat_pad=params['repeat_pad'],
                                 **sent_opts)
 
     return validerr, validcost
@@ -107,6 +108,7 @@ if __name__ == '__main__':
     parser.add_argument("--bn-everywhere", action="store_true")
     parser.add_argument("--bn-input-sequencewise", action="store_true")
     parser.add_argument("--bn-input-not", action="store_true")
+    parser.add_argument("--repeat-pad", action="store_true")
     parser.add_argument("--popstat-eval", action="store_true")
     parser.add_argument("--reloadm", default=0, type=int)
     args = parser.parse_args()
@@ -150,4 +152,5 @@ if __name__ == '__main__':
         'bn_input_sequencewise': args.bn_input_sequencewise,
         'bn_input_not': args.bn_input_not,
         'popstat_eval': args.popstat_eval,
+        'repeat_pad': args.repeat_pad,
         'reload': [args.reloadm]})

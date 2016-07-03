@@ -9,14 +9,21 @@ def bring_to_front(seq, items):
         lst.insert(0, lst.pop(lst.index(item)))
     return lst
 
+#def reverse_realign(batch, mask, batch_axis=0, time_axis=1):
+#    return batch
+
 def reverse_realign(batch, mask, batch_axis=0, time_axis=1):
     batch_dims = bring_to_front(list(range(batch.ndim)), [batch_axis, time_axis])
     mask_dims  = bring_to_front(list(range( mask.ndim)), [batch_axis, time_axis])
+
+    print batch_dims, mask_dims, batch_axis, time_axis, batch.ndim, mask.ndim
 
     batch = batch.dimshuffle(*batch_dims)
     mask = mask.dimshuffle(*mask_dims)
 
     batch = _reverse_realign(batch, mask)
+
+    print [batch_dims[batch_dims[i]] for i in batch_dims]
 
     # invert dimshuffle
     batch = batch.dimshuffle(*[batch_dims[batch_dims[i]] for i in batch_dims])
@@ -28,6 +35,8 @@ def _reverse_realign(batch, mask):
     n_samples = batch.shape[0]
     n_timesteps = batch.shape[1]
     lengths = tensor.iround(mask.sum(axis=1, keepdims=True))
+    if lengths.ndim > 2:
+        lengths = lengths.flatten(ndim=2)
     indices = tensor.repeat(tensor.arange(n_timesteps)[None, :], n_samples, axis=0)
     reverse_indices = lengths - 1 - indices % lengths
     flat_indices = (tensor.arange(n_samples)[:, None] * n_timesteps + reverse_indices).flatten()
@@ -41,9 +50,20 @@ def _reverse_realign(batch, mask):
     flat_indices.name = "flat_indices"
     flat_batch.name = "flat_batch"
     flat_reverse_batch = flat_batch[flat_indices]
+
+    #from theano.tests.breakpoint import PdbBreakpoint
+    #breakpointOp = PdbBreakpoint("Raise1")
+    #flat_reverse_batch = breakpointOp(1., flat_reverse_batch, batch, mask)[0]
+    #import pdb; pdb.set_trace()
+
     reverse_batch = flat_reverse_batch.reshape(batch.shape)
-    #reverse_batch = batch.flatten()[flat_indices].reshape(batch.shape)
+    print reverse_batch.ndim, mask.ndim
+    #from theano.tests.breakpoint import PdbBreakpoint
+    #breakpointOp = PdbBreakpoint("Raise1")
+    #reverse_batch = breakpointOp(1., reverse_batch, batch, mask)[0]
+    reverse_batch = reverse_batch * mask.astype(reverse_batch.dtype)
     reverse_batch.name = "reverse_batch"
+
     return reverse_batch
 
 def test_reverse_realign(n_samples, n_timesteps):

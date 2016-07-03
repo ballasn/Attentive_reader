@@ -20,6 +20,8 @@ from core.costs import nll_simple, multiclass_hinge_loss
 from collections import OrderedDict
 from reverse_realign import reverse_realign
 
+
+
 profile = False
 
 logger = logging.getLogger(__name__)
@@ -163,6 +165,21 @@ def build_bidir_model(inp,
     n_timesteps = inp.shape[0]
     n_samples = inp.shape[1]
 
+
+    # #inpr = inp[::-1]
+    # inpr_mask = inp_mask[::-1]
+
+
+    # emb = dot(inp, tparams['Wemb_%s' % sfx])
+    # emb = emb.reshape([n_timesteps, n_samples, -1])
+
+    # if use_dropout:
+    #     emb = dropout_layer(emb, use_noise,
+    #                         p=options['dropout_rate'])
+
+    # embr = emb[::-1]#embr.reshape([n_timesteps, n_samples, -1])
+
+
     # generate reverse batch. involves a GpuAdvancedSubtensor that takes ridiculously
     # long if you do it on the embedding, so we reverse before the embedding and then
     # recompute the embedding for the reverse batch even if it's just a reshuffling of
@@ -194,6 +211,7 @@ def build_bidir_model(inp,
     """
     Reverse RNN.
     """
+    #embr = dot(inpr, tparams['Wemb_%s' % sfx])
     projr = get_layer(options[name])[1](tparams=tparams,
                                         state_below=embr,
                                         options=options,
@@ -332,7 +350,6 @@ def build_model(tparams,
     q = tensor.matrix('q', dtype="uint32")
     q_mask = tensor.matrix('q_mask', dtype="float32")
     y = tensor.vector('ans', dtype='uint32')
-    em = tensor.matrix('entity_mask', dtype="float32")
 
     wlen = tensor.scalar('wlen', dtype='uint32')
     qlen = tensor.scalar('qlen', dtype='uint32')
@@ -346,7 +363,8 @@ def build_model(tparams,
         if options['use_sent_reps']:
             d_, d_mask_, q_, q_mask_, wlen_, slen_, qlen_ = prepare_data_fn(d_, q_)
         else:
-            d_, d_mask_, q_, q_mask_, wlen_, qlen_ = prepare_data_fn(d_, q_)
+            d_, d_mask_, q_, q_mask_, wlen_, qlen_ = prepare_data_fn(d_, q_,
+                                                                     repeat_pad=options['repeat_pad'])
 
         print "Debugging is enabled."
 
@@ -356,7 +374,6 @@ def build_model(tparams,
         q.tag.test_value = numpy.array(q_).astype("uint32")
         q_mask.tag.test_value = numpy.array(q_mask_).astype("float32")
         y.tag.test_value = numpy.array(a_).astype("uint32")
-        em.tag.test_value = numpy.array(em_).astype("float32")
         wlen.tag.test_value = numpy.array(wlen_).astype("uint32")
         qlen.tag.test_value = numpy.array(qlen_).astype("uint32")
 
@@ -384,11 +401,40 @@ def build_model(tparams,
                                               use_noise=use_noise,
                                               name="encoder_desc_word")
 
-        desc_wrep = concatenate([proj_wx[0],
-                                 reverse_realign(proj_wxr[0], word_mask, batch_axis=1, time_axis=0)],
-                                axis=-1)
+        #from theano.tests.breakpoint import PdbBreakpoint
+        #breakpointOp = PdbBreakpoint("rev1")
+        #proj_wxr[0] = breakpointOp(1., proj_wxr[0])
 
+
+        #reverse_projwx = reverse_realign(proj_wxr[0], word_mask.dimshuffle(0, 1, 'x'), batch_axis=1, time_axis=0)
+        #reverse_projwx1 = breakpointOp(1., reverse_projwx, proj_wxr[0])[0]
+
+        #reverse_projwx = reverse_realign(proj_wxr[0], word_mask.dimshuffle(0, 1, 'x'), batch_axis=1, time_axis=0)
+        #reverse_projwx2 = breakpointOp(1., reverse_projwx, proj_wxr[0])[0]Q
+
+        #import pdb; pdb.set_trace()
+        #proj_wxr[0] = reverse_projwx1 + reverse_projwx2
+
+        desc_wrep = concatenate([proj_wx[0],
+                                 reverse_realign(proj_wxr[0], word_mask.dimshuffle(0, 1, 'x'), batch_axis=1, time_axis=0)],
+                                #proj_wxr[0][::-1]],
+                                axis=-1)
+    else:
+        proj_wx = build_nonbidir_model(x_rshp,
+                                       word_mask,
+                                       tparams,
+                                       options,
+                                       sfx="word",
+                                       nsteps=wlen,
+                                       truncate=options['truncate'],
+                                       use_dropout=options['use_dropout'],
+                                       use_noise=use_noise,
+                                       name="encoder_desc_word")
+        desc_wrep = proj_wx
+
+    if options['use_bidir']:
         if options['use_sent_reps']:
+            assert False
             desc_wrep = desc_wrep.reshape((x.shape[0],
                                            x.shape[1],
                                            x.shape[2],
@@ -406,13 +452,12 @@ def build_model(tparams,
                                                   truncate=options['truncate'],
                                                   name="encoder_desc_sent")
 
-            desc_rep = concatenate([proj_sx[0],
-                                    reverse_realign(proj_sxr[0], sent_mask, batch_axis=1, time_axis=0)],
-                                   axis=-1)
+            proj_x, proj_xr = proj_sx, proj_sxr
             desc_mask = sent_mask.dimshuffle(0, 1, 'x')
         else:
-            desc_rep = desc_wrep
+            proj_x, proj_xr = proj_wx, proj_wxr
             desc_mask = word_mask.dimshuffle(0, 1, 'x')
+            proj_xr = reverse_realign(proj_wxr[0], word_mask.dimshuffle(0, 1, 'x'), batch_axis=1, time_axis=0)
 
         """
         Build question bidir RNN
@@ -426,21 +471,17 @@ def build_model(tparams,
                                             use_noise=use_noise,
                                             name="encoder_q")
 
-        q_rep = concatenate([proj_q[0][-1], proj_qr[0][-1]], axis=-1)
+        desc_rep = concatenate([proj_x[0],
+                                proj_xr],
+                                #proj_xr[0][::-1]],
+                                axis=-1)
+
+        q_rep = concatenate([proj_q[0][-1],
+                             reverse_realign(proj_qr[0], q_mask.dimshuffle(0, 1, 'x'), batch_axis=1, time_axis=0)[0]],
+                            #proj_qr[0][::-1][0]],
+                            axis=-1)
 
     else:
-        proj_wx = build_nonbidir_model(x_rshp,
-                                       word_mask,
-                                       tparams,
-                                       options,
-                                       sfx="word",
-                                       nsteps=wlen,
-                                       truncate=options['truncate'],
-                                       use_dropout=options['use_dropout'],
-                                       use_noise=use_noise,
-                                       name="encoder_desc_word")
-        desc_wrep = proj_wx
-
         if options['use_sent_reps']:
             desc_wrep = desc_wrep.reshape((x.shape[0],
                                            x.shape[1],
@@ -467,13 +508,13 @@ def build_model(tparams,
         Build question bidir RNN
         """
         proj_q = build_nonbidir_model(q, q_mask,
-                                            tparams,
-                                            options, sfx="word",
-                                            nsteps=qlen,
-                                            truncate=options['truncate'],
-                                            use_dropout=options['use_dropout'],
-                                            use_noise=use_noise,
-                                            name="encoder_q")
+                                      tparams,
+                                      options, sfx="word",
+                                      nsteps=qlen,
+                                      truncate=options['truncate'],
+                                      use_dropout=options['use_dropout'],
+                                      use_noise=use_noise,
+                                      name="encoder_q")
 
         desc_rep = proj_x
         q_rep = proj_q[-1]
@@ -533,11 +574,14 @@ def build_model(tparams,
                                activ='Linear')
 
     probs = Softmax(logit)
+    hinge_cost = multiclass_hinge_loss(probs, y)
 
     # compute the cost
     cost, errors, ent_errors, ent_derrors = nll_simple(y,
                                                        probs,
                                                        cost_ent_mask=cost_mask)
+    cost = cost #+ 1e-2 * hinge_cost
+    #cost = hinge_cost
     vals = OrderedDict({'desc': x,
                         'word_mask': word_mask,
                         'q': q,
@@ -573,49 +617,27 @@ def eval_model(f_log_probs,
         d = batch[0]
         q = batch[1]
         a = batch[2]
-        max_dlen = batch[3]
-        max_qlen = batch[4]
-        em = None
-
         n_done += len(d)
-        if em:
-            if not use_sent_rep:
-                d, d_mask, q, q_mask, dlen, qlen = prepare_data(d, q)
-                outs = f_log_probs(d,
-                                   d_mask, q,
-                                   q_mask, a, dlen,
-                                   qlen, em)
-            else:
-                d, d_mask, q, q_mask, dlen, slen, \
-                        qlen = prepare_data(d, q)
-
-                outs = f_log_probs(d,
-                                   d_mask,
-                                   q,
-                                   q_mask,
-                                   a,
-                                   dlen,
-                                   slen,
-                                   qlen, em)
+        if not use_sent_rep:
+            d, d_mask, q, q_mask, dlen, qlen = prepare_data(d, q,
+                                                            repeat_pad=options['repeat_pad'])
+            print d.shape, d_mask.shape, q.shape, q_mask.shape, len(a), dlen, qlen
+            outs = f_log_probs(d,
+                               d_mask, q,
+                               q_mask, a, dlen,
+                               qlen)
         else:
-            if not use_sent_rep:
-                d, d_mask, q, q_mask, dlen, qlen = prepare_data(d, q)
-                outs = f_log_probs(d,
-                                   d_mask, q,
-                                   q_mask, a, dlen,
-                                   qlen)
-            else:
-                d, d_mask, q, q_mask, dlen, slen, \
-                        qlen = prepare_data(d, q)
-                outs = f_log_probs(d,
-                                   d_mask,
-                                   q,
-                                   q_mask,
-                                   a,
-                                   dlen,
-                                   slen,
-                                   qlen)
+            d, d_mask, q, q_mask, dlen, slen, \
+                    qlen = prepare_data(d, q)
 
+            outs = f_log_probs(d,
+                               d_mask,
+                               q,
+                               q_mask,
+                               a,
+                               dlen,
+                               slen,
+                               qlen)
 
         if len(outs) == 4:
             pcosts, perrors, pprobs, palphas = list(outs)
@@ -648,7 +670,7 @@ def eval_model(f_log_probs,
             if perror_dent:
                 error_dents.append(perror_dent)
 
-        if numpy.isnan(numpy.concatenate(probs)).any():
+        if numpy.isnan(numpy.mean(probs)):
             import ipdb; ipdb.set_trace()
 
         if verbose:
@@ -663,5 +685,5 @@ def eval_model(f_log_probs,
     if len(error_dents) > 0:
         error_dent = numpy.mean(error_dents)
 
-    return numpy.array(costs), numpy.array(errors), numpy.concatenate(probs), \
+    return numpy.array(costs), numpy.array(errors), numpy.array(probs), \
             numpy.array(alphas), error_ent, error_dent
