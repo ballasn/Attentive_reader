@@ -152,7 +152,10 @@ class PytablesRCDataIterator(Iterator):
         self.max_kbatches = batch_size * n_batches_in_bucket
 
         self.eos_tok_id = eos_tok_id
+        #print "bs: ", batch_size, n_batches_in_bucket, self.max_kbatches
+
         self.offset = self.start
+
         self.quote_tok_id = quote_tok_id
         self.exit_flag = False
         self.load_rc_data()
@@ -207,6 +210,7 @@ class PytablesRCDataIterator(Iterator):
         assert len(self.source_buffer) == len(self.target_buffer), 'Buffer size mismatch!'
         assert len(self.source_buffer) == len(self.question_buffer), 'Buffer size mismatch!'
 
+        #print "len:", len(self.source_buffer), self.offset, self.stop
         if len(self.source_buffer) == 0:
             dlens = []
             while len(self.source_buffer) < self.max_kbatches:
@@ -227,6 +231,7 @@ class PytablesRCDataIterator(Iterator):
                         self.offset = self.start
                     else:
                         self.done = True
+                        #import pdb; pdb.set_trace()
                         raise StopIteration
 
                 self.source_buffer.append(self.d_data[dpos:dpos+dlen])
@@ -269,9 +274,16 @@ class PytablesRCDataIterator(Iterator):
                                                   self.eos_tok_id,
                                                   self.quote_tok_id)
 
+
+        #print "here", len(desc_ngrams), len(q_ngrams), len(ans), max_dlen, max_qlen
         return desc_ngrams, q_ngrams, ans, max_dlen, max_qlen
 
     def reset(self):
         assert self.started, "You should start the iterator first!"
         self.offset = self.start
+        #print "rbuf", len(self.source_buffer)
+        self.source_buffer = []
+        self.target_buffer = []
+        self.question_buffer = []
+
         self.done = False
