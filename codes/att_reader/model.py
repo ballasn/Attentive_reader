@@ -3,7 +3,7 @@ import logging
 from collections import OrderedDict
 from att_reader.utils import norm_weight, ortho_weight, \
                             norm_vec, Masked_Softmax
-from att_reader.layers import get_layer, dropout_layer
+from att_reader.layers import get_layer, dropout_layer, bn_sequence
 
 import numpy
 
@@ -48,7 +48,7 @@ def init_params(options):
             mult *= 2
 
     # layer type for maybe-batch-normalized ff layers
-    layertype = 'bnff' if options["bn_everywhere"] else 'ff'
+    layertype = 'normff' if options["bn_everywhere"] else 'ff'
 
     if options['use_dq_sims']:
         params['ff_att_bi_dq'] = \
@@ -151,6 +151,7 @@ def build_bidir_model(inp,
                       options,
                       sfx=None,
                       nsteps=None,
+                      use_batchnorm=True,
                       use_dropout=False,
                       use_noise=None,
                       truncate=None,
@@ -187,9 +188,11 @@ def build_bidir_model(inp,
     inpr = reverse_realign(inp, inp_mask, batch_axis=1, time_axis=0)
     inpr_mask = inp_mask
 
-    def embed(inp):
+    def embed(inp, mask=None):
         emb = dot(inp, tparams["Wemb_%s" % sfx])
         emb = emb.reshape([n_timesteps, n_samples, -1])
+        if use_batchnorm:
+            emb = bn_sequence(emb, mask=maks)
         if use_dropout:
             emb = dropout_layer(emb, use_noise, p=options['dropout_rate'])
         return emb
@@ -285,7 +288,7 @@ def build_attention(tparams,
     masked_desc = desc * desc_mask_
 
     desc_in = desc.reshape((-1, desc.shape[-1]))
-    layertype = 'bnff' if options["bn_everywhere"] else 'ff'
+    layertype = 'normff' if options["bn_everywhere"] else 'ff'
     projd = get_layer(layertype)[1](tparams=tparams,
                                state_below=desc_in,
                                options=options,
@@ -519,7 +522,7 @@ def build_model(tparams,
         desc_rep = proj_x
         q_rep = proj_q[-1]
 
-    layertype = 'bnff' if options["bn_everywhere"] else 'ff'
+    layertype = 'normff' if options["bn_everywhere"] else 'ff'
     g_desc_ave = 0.
 
     if options['use_desc_skip_c_g']:
@@ -621,7 +624,7 @@ def eval_model(f_log_probs,
         if not use_sent_rep:
             d, d_mask, q, q_mask, dlen, qlen = prepare_data(d, q,
                                                             repeat_pad=options['repeat_pad'])
-            print d.shape, d_mask.shape, q.shape, q_mask.shape, len(a), dlen, qlen
+            #print d.shape, d_mask.shape, q.shape, q_mask.shape, len(a), dlen, qlen
             outs = f_log_probs(d,
                                d_mask, q,
                                q_mask, a, dlen,
