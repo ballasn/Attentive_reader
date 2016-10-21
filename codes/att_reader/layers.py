@@ -53,7 +53,7 @@ layers = {
           'gru': ('param_init_gru', 'gru_layer'),
           'gru_cond': ('param_init_gru_cond', 'gru_cond_layer'),
           'lstm': ('param_init_lstm', 'lstm_layer'),
-          'bnlstm': ('param_init_bnlstm', 'bnlstm_layer'),
+          'normlstm': ('param_init_normlstm', 'normlstm_layer'),
           'lstm_tied': ('param_init_lstm_tied', 'lstm_tied_layer'),
           }
 
@@ -249,11 +249,11 @@ def gru_layer(tparams,
 
 
 # batch-normalized LSTM layer
-def param_init_bnlstm(options,
-                    params,
-                    prefix='bnlstm',
-                    nin=None,
-                    dim=None):
+def param_init_normlstm(options,
+                        params,
+                        prefix='normlstm',
+                        nin=None,
+                        dim=None):
 
     if nin is None:
         nin = options['dim_proj']
@@ -283,14 +283,25 @@ def param_init_bnlstm(options,
     return params
 
 
-def bnlstm_layer(tparams, state_below,
-               options,
-               prefix='bnlstm',
-               mask=None, one_step=False,
-               init_state=None,
-               init_memory=None,
-               nsteps=None,
-               **kwargs):
+def norm_tanh(self, x, gamma=0.1):
+    rnd = numpy.random.randn(10000000).astype(config.floatX)
+    y = numpy.tanh(gamma*rnd)
+    scale = numpy.sqrt(numpy.var(y))
+    scale = scale.astype(config.floatX)
+    return tensor.tanh(x) / scale
+
+
+def normlstm_layer(tparams, state_below,
+                   options,
+                   prefix='bnlstm',
+                   mask=None, one_step=False,
+                   init_state=None,
+                   init_memory=None,
+                   nsteps=None,
+                   **kwargs):
+
+    ### Warning must be the same than in param_init_normlstm
+    initial_gamma, initial_beta = 0.1, 0.0
 
     if nsteps is None:
         nsteps = state_below.shape[0]
@@ -319,6 +330,14 @@ def bnlstm_layer(tparams, state_below,
     U = param('U')
     b = param('b')
     W = param('W')
+
+
+    ### Normalize param:
+    nU = tensor.sqrt((U**2).sum(axis=0, keepdims=True))
+    U = U * param('recurrent_gammas').dimshuffle('x', 0) / nU
+    nW = tensor.sqrt((W**2).sum(axis=0, keepdims=True))
+    W = W * param('input_gammas') / nW
+
     non_seqs = [U, b, W]
     non_seqs.extend(list(map(param, "recurrent_gammas input_gammas output_gammas output_betas".split())))
 
@@ -331,29 +350,27 @@ def bnlstm_layer(tparams, state_below,
             return _x[:, :, n*dim:(n+1)*dim]
         return _x[:, n*dim:(n+1)*dim]
 
-    def _step(mask, sbelow, sbefore, cell_before, *args):
-        recurrent_term = bn(dot(sbefore, param('U')), gamma=param('recurrent_gammas'), prefix=prefix + "_recurrent")
+    def _step(mask, sbelow, sbefore, cell_before, # *args):
+              U, b, W):
+        recurrent_term = dot(sbefore, U)
         input_term = sbelow
-        if not options["bn_input_not"] and not options["bn_input_sequencewise"]:
-            input_term = bn(input_term, gamma=param('input_gammas'), prefix=prefix + "_input")
-
-        preact = recurrent_term + input_term + param('b')
+        preact = recurrent_term + input_term + b
 
         i = Sigmoid(_slice(preact, 0, dim))
         f = Sigmoid(_slice(preact, 1, dim))
         o = Sigmoid(_slice(preact, 2, dim))
-        c = Tanh(_slice(preact, 3, dim))
+        c_tilde = norm_tanh(_slice(preact, 3, dim))
 
-        c = f * cell_before + i * c
+        c = f * cell_before + i * c_tilde
         c = mask * c + (1. - mask) * cell_before
 
-        c_ = bn(c, gamma=param('output_gammas'), beta=param('output_betas'), prefix=prefix + "_output")
-        h = o * tensor.tanh(c_)
+        c_norm = c * param('output_gammas') + param('output_beta')
+        h = o * norm_tanh(c_norm)
         h = mask * h + (1. - mask) * sbefore
 
         return h, c
 
-    lstm_state_below = dot(state_below, param('W')) + param('b')
+    lstm_state_below = dot(state_below, W) #+ param('b')
     if state_below.ndim == 3:
         lstm_state_below = lstm_state_below.reshape((state_below.shape[0],
                                                      state_below.shape[1],
@@ -364,7 +381,7 @@ def bnlstm_layer(tparams, state_below,
         # should be batch-normalized by the caller
         assert False
         mask = mask.dimshuffle(0, 'x')
-        h, c = _step(mask, lstm_state_below, init_state, init_memory)
+        h, c = _step(mask, lstm_state_below, init_state, init_memory, U, b, W)
         rval = [h, c]
     else:
         if mask.ndim == 3 and mask.ndim == state_below.ndim:
@@ -372,13 +389,6 @@ def bnlstm_layer(tparams, state_below,
                                  mask.shape[1]*mask.shape[2])).dimshuffle(0, 1, 'x')
         elif mask.ndim == 2:
             mask = mask.dimshuffle(0, 1, 'x')
-
-        if options["bn_input_not"]:
-            # no input normalization (but keep parameters in graph so theano doesn't die)
-            lstm_state_below += 0* bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask, prefix=prefix + "_input")
-        elif options["bn_input_sequencewise"]:
-            # batch-normalize input sequence-wise
-            lstm_state_below = bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask, prefix=prefix + "_input")
 
         rval, updates = theano.scan(_step,
                                     sequences=[mask, lstm_state_below],
