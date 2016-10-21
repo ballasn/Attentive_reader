@@ -8,21 +8,31 @@ from core.commons import Sigmoid, Tanh, Rect, global_trng, Linear, ELU
 
 """
     We have functions to create the layers and initialize them.
-"""
+c"""
+
+# layer normalization
+def ln(x, b, s, prefix=""):
+    _eps = 1e-5
+    output = (x - x.mean(1)[:,None]) / tensor.sqrt((x.var(1)[:,None] + _eps))
+    if b is not None:
+        output = s[None, :] * output + b[None,:]
+    else:
+        output = s[None, :] * output
+    return output
 
 # batch normalization
 def bn(x, gamma=1., beta=0., prefix=""):
     assert x.ndim == 2
-    mean, var = x.mean(axis=0), x.var(axis=0)
-    mean.tag.bn_statistic = True
-    mean.tag.bn_label = prefix + "_mean"
-    var.tag.bn_statistic = True
-    var.tag.bn_label = prefix + "_var"
+    mean, var = x.mean(axis=1), x.var(axis=1)
+    #mean.tag.bn_statistic = True
+    #mean.tag.bn_label = prefix + "_mean"
+    #var.tag.bn_statistic = True
+    #var.tag.bn_label = prefix + "_var"
     y = theano.tensor.nnet.bn.batch_normalization(
         inputs=x,
         gamma=gamma, beta=beta,
-        mean=tensor.shape_padleft(mean),
-        std=tensor.shape_padleft(tensor.sqrt(var + 1e-5)))
+        mean=tensor.shape_padright(mean),
+        std=tensor.shape_padright(tensor.sqrt(var + 1e-5)))
     assert y.ndim == 2
     return y
 
@@ -49,11 +59,13 @@ def bn_sequence(x, gamma=1., beta=0., mask=None, prefix=""):
 profile = False
 layers = {
           'ff': ('param_init_fflayer', 'fflayer'),
+          'lnff': ('param_init_lnfflayer', 'lnfflayer'),
           'bnff': ('param_init_bnfflayer', 'bnfflayer'),
           'gru': ('param_init_gru', 'gru_layer'),
           'gru_cond': ('param_init_gru_cond', 'gru_cond_layer'),
           'lstm': ('param_init_lstm', 'lstm_layer'),
-          'bnlstm': ('param_init_bnlstm', 'bnlstm_layer'),
+           'bnlstm': ('param_init_bnlstm', 'bnlstm_layer'),
+          'lnlstm': ('param_init_lnlstm', 'lnlstm_layer'),
           'lstm_tied': ('param_init_lstm_tied', 'lstm_tied_layer'),
           }
 
@@ -98,6 +110,35 @@ def fflayer(tparams,
         return eval(activ)(dot(state_below, tparams[prfx(prefix, 'W')]) + tparams[prfx(prefix, 'b')])
     else:
         return eval(activ)(dot(state_below, tparams[prfx(prefix, 'W')]))
+
+
+def param_init_lnfflayer(options,
+                         params,
+                         prefix='lnff',
+                         nin=None,
+                         nout=None,
+                         ortho=True,
+                         use_bias=True):
+    if nin  is None: nin  = options['dim_proj']
+    if nout is None: nout = options['dim_proj']
+    params[prfx(prefix, 'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
+    params[prfx(prefix, 'gamma')] = 0.1 * numpy.ones((nout,)).astype('float32')
+    if use_bias:
+        params[prfx(prefix, 'b')] = numpy.zeros((nout,)).astype('float32')
+    return params
+
+
+def lnfflayer(tparams,
+              state_below,
+              options,
+              prefix='rconv',
+              use_bias=True,
+              activ='lambda x: tensor.tanh(x)',
+              **kwargs):
+    W     = tparams[prfx(prefix, 'W'    )]
+    gamma = tparams[prfx(prefix, 'gamma')]
+    b     = tparams[prfx(prefix, 'b'    )] if use_bias else None
+    return eval(activ)(ln(dot(state_below, W), s=gamma, b=b, prefix=prefix))
 
 # batch-normalized feedforward layer: linear transformation + batch normalization + point-wise nonlinearity
 def param_init_bnfflayer(options,
@@ -378,6 +419,7 @@ def bnlstm_layer(tparams, state_below,
             lstm_state_below += 0* bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask, prefix=prefix + "_input")
         elif options["bn_input_sequencewise"]:
             # batch-normalize input sequence-wise
+            import pdb; pdb.set_trace()
             lstm_state_below = bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask, prefix=prefix + "_input")
 
         rval, updates = theano.scan(_step,
@@ -809,3 +851,138 @@ def dropout_layer(state_before,
                                                 dtype=state_before.dtype)/p,
                                                 state_before)
     return proj
+
+# LN-LSTM init
+def param_init_lnlstm(options,
+                    params,
+                    prefix='lnlstm',
+                    nin=None,
+                    dim=None):
+    if nin is None:
+        nin = options['dim_proj']
+
+    if dim is None:
+        dim = options['dim_proj']
+
+    W = numpy.concatenate([norm_weight(nin,dim),
+                           norm_weight(nin,dim),
+                           norm_weight(nin,dim),
+                           norm_weight(nin,dim)],
+                           axis=1)
+
+    params[prfx(prefix,'W')] = W
+    U = numpy.concatenate([ortho_weight(dim),
+                           ortho_weight(dim),
+                           ortho_weight(dim),
+                           ortho_weight(dim)],
+                           axis=1)
+
+    params[prfx(prefix,'U')] = U
+    params[prfx(prefix,'b')] = numpy.zeros((4 * dim,)).astype('float32')
+
+    # lateral parameters
+    scale_add = 0.0
+    scale_mul = 1.0
+    params[prfx(prefix,'b1')] = scale_add * numpy.ones((4*dim)).astype('float32')
+    params[prfx(prefix,'b2')] = scale_add * numpy.ones((4*dim)).astype('float32')
+    params[prfx(prefix,'b3')] = scale_add * numpy.ones((1*dim)).astype('float32')
+    params[prfx(prefix,'s1')] = scale_mul * numpy.ones((4*dim)).astype('float32')
+    params[prfx(prefix,'s2')] = scale_mul * numpy.ones((4*dim)).astype('float32')
+    params[prfx(prefix,'s3')] = scale_mul * numpy.ones((1*dim)).astype('float32')
+
+    return params
+
+# LN-LSTM layer
+def lnlstm_layer(tparams, state_below,
+                 options,
+                 prefix='lnlstm',
+                 mask=None, one_step=False,
+                 init_state=None,
+                 init_memory=None,
+                 nsteps=None,
+                 **kwargs):
+
+    if nsteps is None:
+        nsteps = state_below.shape[0]
+
+    if state_below.ndim == 3:
+        n_samples = state_below.shape[1]
+    else:
+        n_samples = 1
+
+    param = lambda name: tparams[prfx(prefix, name)]
+    dim = param('U').shape[0]
+
+    if mask is None:
+        mask = tensor.alloc(1., state_below.shape[0], 1)
+
+    # initial/previous state
+    if init_state is None:
+        if not options['learn_h0']:
+            init_state = tensor.alloc(0., n_samples, dim)
+        else:
+            init_state0 = sharedX(numpy.zeros((options['dim'])),
+                                 name=prfx(prefix, "h0"))
+            init_state = tensor.alloc(init_state0, n_samples, dim)
+            tparams[prfx(prefix, 'h0')] = init_state0
+
+    U = param('U')
+    b = param('b')
+    W = param('W')
+    non_seqs = [U, b, W]
+    non_seqs.extend(list(map(param, "b1 b2 b3 s1 s2 s3".split())))
+
+    # initial/previous memory
+    if init_memory is None:
+        init_memory = tensor.alloc(0., n_samples, dim)
+
+    def _slice(_x, n, dim):
+        if _x.ndim == 3:
+            return _x[:, :, n*dim:(n+1)*dim]
+        return _x[:, n*dim:(n+1)*dim]
+
+    def _step(mask, sbelow, sbefore, cell_before, *args):
+        sbelow_ = ln(sbelow, param('b1'), param('s1'))
+        sbefore_ = ln(dot(sbefore, param('U')), param('b2'), param('s2'))
+
+        preact = sbefore_ + sbelow_ + param('b')
+
+        i = Sigmoid(_slice(preact, 0, dim))
+        f = Sigmoid(_slice(preact, 1, dim))
+        o = Sigmoid(_slice(preact, 2, dim))
+        c = Tanh(_slice(preact, 3, dim))
+
+        c = f * cell_before + i * c
+        c = mask * c + (1. - mask) * cell_before
+
+        c_ = ln(c, param('b3'), param('s3'))
+        h = o * tensor.tanh(c_)
+        h = mask * h + (1. - mask) * sbefore
+
+        return h, c
+
+    lstm_state_below = dot(state_below, param('W')) + param('b')
+    if state_below.ndim == 3:
+        lstm_state_below = lstm_state_below.reshape((state_below.shape[0],
+                                                     state_below.shape[1],
+                                                     -1))
+    if one_step:
+        mask = mask.dimshuffle(0, 'x')
+        h, c = _step(mask, lstm_state_below, init_state, init_memory)
+        rval = [h, c]
+    else:
+        if mask.ndim == 3 and mask.ndim == state_below.ndim:
+            mask = mask.reshape((mask.shape[0], \
+                                 mask.shape[1]*mask.shape[2])).dimshuffle(0, 1, 'x')
+        elif mask.ndim == 2:
+            mask = mask.dimshuffle(0, 1, 'x')
+
+        rval, updates = theano.scan(_step,
+                                    sequences=[mask, lstm_state_below],
+                                    outputs_info = [init_state,
+                                                    init_memory],
+                                    name=prfx(prefix, '_layers'),
+                                    non_sequences=non_seqs,
+                                    strict=True,
+                                    n_steps=nsteps)
+    return rval
