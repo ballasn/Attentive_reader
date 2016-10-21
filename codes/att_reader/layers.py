@@ -49,7 +49,7 @@ def bn_sequence(x, gamma=1., beta=0., mask=None, prefix=""):
 profile = False
 layers = {
           'ff': ('param_init_fflayer', 'fflayer'),
-          'bnff': ('param_init_bnfflayer', 'bnfflayer'),
+          'normff': ('param_init_normfflayer', 'normfflayer'),
           'gru': ('param_init_gru', 'gru_layer'),
           'gru_cond': ('param_init_gru_cond', 'gru_cond_layer'),
           'lstm': ('param_init_lstm', 'lstm_layer'),
@@ -99,14 +99,14 @@ def fflayer(tparams,
     else:
         return eval(activ)(dot(state_below, tparams[prfx(prefix, 'W')]))
 
-# batch-normalized feedforward layer: linear transformation + batch normalization + point-wise nonlinearity
-def param_init_bnfflayer(options,
-                         params,
-                         prefix='bnff',
-                         nin=None,
-                         nout=None,
-                         ortho=True,
-                         use_bias=True):
+# normalized feedforward layer: linear transformation + batch normalization + point-wise nonlinearity
+def param_init_normfflayer(options,
+                           params,
+                           prefix='normff',
+                           nin=None,
+                           nout=None,
+                           ortho=True,
+                           use_bias=True):
     if nin  is None: nin  = options['dim_proj']
     if nout is None: nout = options['dim_proj']
     params[prfx(prefix, 'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
@@ -116,7 +116,7 @@ def param_init_bnfflayer(options,
     return params
 
 
-def bnfflayer(tparams,
+def normfflayer(tparams,
               state_below,
               options,
               prefix='rconv',
@@ -126,7 +126,9 @@ def bnfflayer(tparams,
     W     = tparams[prfx(prefix, 'W'    )]
     gamma = tparams[prfx(prefix, 'gamma')]
     b     = tparams[prfx(prefix, 'b'    )] if use_bias else 0
-    return eval(activ)(bn(dot(state_below, W), gamma, b, prefix=prefix))
+    nW = tensor.sqrt((W**2).sum(axis=0, keepdims=True))
+    W = W * gamma.dimshuffle('x', 0) / nW
+    return eval(activ)(dot(state_below, W) + b)
 
 
 # GRU layer
@@ -275,7 +277,7 @@ def param_init_normlstm(options,
     params[prfx(prefix,'U')] = U
     params[prfx(prefix,'b')] = numpy.zeros((4 * dim,)).astype('float32')
 
-    initial_gamma, initial_beta = 0.1, 0.0
+    initial_gamma, initial_beta = 1.0, 0.0
     params[prfx(prefix,'recurrent_gammas')] = initial_gamma * numpy.ones((4 * dim,)).astype('float32')
     params[prfx(prefix,'input_gammas')]     = initial_gamma * numpy.ones((4 * dim,)).astype('float32')
     params[prfx(prefix,'output_gammas')]    = initial_gamma * numpy.ones((1 * dim,)).astype('float32')
@@ -283,7 +285,7 @@ def param_init_normlstm(options,
     return params
 
 
-def norm_tanh(self, x, gamma=0.1):
+def norm_tanh(self, x, gamma=1.0):
     rnd = numpy.random.randn(10000000).astype(config.floatX)
     y = numpy.tanh(gamma*rnd)
     scale = numpy.sqrt(numpy.var(y))
@@ -301,7 +303,7 @@ def normlstm_layer(tparams, state_below,
                    **kwargs):
 
     ### Warning must be the same than in param_init_normlstm
-    initial_gamma, initial_beta = 0.1, 0.0
+    initial_gamma, initial_beta = 1.0, 0.0
 
     if nsteps is None:
         nsteps = state_below.shape[0]
