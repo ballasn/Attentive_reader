@@ -11,17 +11,17 @@ from core.commons import Sigmoid, Tanh, Rect, global_trng, Linear, ELU
 c"""
 
 # layer normalization
-def ln(x, b, s, prefix=""):
-    _eps = 1e-5
-    output = (x - x.mean(1)[:,None]) / tensor.sqrt((x.var(1)[:,None] + _eps))
-    if b is not None:
-        output = s[None, :] * output + b[None,:]
-    else:
-        output = s[None, :] * output
-    return output
+# def ln(x, b, s, prefix=""):
+#     _eps = 1e-5
+#     output = (x - x.mean(1)[:,None]) / tensor.sqrt((x.var(1)[:,None] + _eps))
+#     if b is not None:
+#         output = s[None, :] * output + b[None,:]
+#     else:
+#         output = s[None, :] * output
+#     return output
 
 # batch normalization
-def bn(x, gamma=1., beta=0., prefix=""):
+def ln(x, gamma=1., beta=0., prefix=""):
     assert x.ndim == 2
     mean, var = x.mean(axis=1), x.var(axis=1)
     #mean.tag.bn_statistic = True
@@ -38,6 +38,7 @@ def bn(x, gamma=1., beta=0., prefix=""):
 
 # sequence-wise batch normalization as in Laurent et al 2015
 def bn_sequence(x, gamma=1., beta=0., mask=None, prefix=""):
+    assert False
     assert x.ndim == 3
     n = mask.sum()
     n = theano.tensor.opt.Assert("mask all zero")(n, n > 0)
@@ -143,7 +144,7 @@ def lnfflayer(tparams,
 # batch-normalized feedforward layer: linear transformation + batch normalization + point-wise nonlinearity
 def param_init_bnfflayer(options,
                          params,
-                         prefix='bnff',
+                         prefix='lnff',
                          nin=None,
                          nout=None,
                          ortho=True,
@@ -167,7 +168,7 @@ def bnfflayer(tparams,
     W     = tparams[prfx(prefix, 'W'    )]
     gamma = tparams[prfx(prefix, 'gamma')]
     b     = tparams[prfx(prefix, 'b'    )] if use_bias else 0
-    return eval(activ)(bn(dot(state_below, W), gamma, b, prefix=prefix))
+    return eval(activ)(ln(dot(state_below, W), gamma, b, prefix=prefix))
 
 
 # GRU layer
@@ -292,7 +293,7 @@ def gru_layer(tparams,
 # batch-normalized LSTM layer
 def param_init_bnlstm(options,
                     params,
-                    prefix='bnlstm',
+                    prefix='lnlstm',
                     nin=None,
                     dim=None):
 
@@ -326,7 +327,7 @@ def param_init_bnlstm(options,
 
 def bnlstm_layer(tparams, state_below,
                options,
-               prefix='bnlstm',
+               prefix='lnlstm',
                mask=None, one_step=False,
                init_state=None,
                init_memory=None,
@@ -373,10 +374,10 @@ def bnlstm_layer(tparams, state_below,
         return _x[:, n*dim:(n+1)*dim]
 
     def _step(mask, sbelow, sbefore, cell_before, *args):
-        recurrent_term = bn(dot(sbefore, param('U')), gamma=param('recurrent_gammas'), prefix=prefix + "_recurrent")
+        recurrent_term = ln(dot(sbefore, param('U')), gamma=param('recurrent_gammas'), prefix=prefix + "_recurrent")
         input_term = sbelow
         if not options["bn_input_not"] and not options["bn_input_sequencewise"]:
-            input_term = bn(input_term, gamma=param('input_gammas'), prefix=prefix + "_input")
+            input_term = ln(input_term, gamma=param('input_gammas'), prefix=prefix + "_input")
 
         preact = recurrent_term + input_term + param('b')
 
@@ -388,7 +389,7 @@ def bnlstm_layer(tparams, state_below,
         c = f * cell_before + i * c
         c = mask * c + (1. - mask) * cell_before
 
-        c_ = bn(c, gamma=param('output_gammas'), beta=param('output_betas'), prefix=prefix + "_output")
+        c_ = ln(c, gamma=param('output_gammas'), beta=param('output_betas'), prefix=prefix + "_output")
         h = o * tensor.tanh(c_)
         h = mask * h + (1. - mask) * sbefore
 
