@@ -28,6 +28,8 @@ def bn(x, gamma=1., beta=0., prefix=""):
 
 # sequence-wise batch normalization as in Laurent et al 2015
 def bn_sequence(x, gamma=1., beta=0., mask=None, prefix=""):
+
+    import pdb; pdb.set_trace()
     assert x.ndim == 3
     n = mask.sum()
     n = theano.tensor.opt.Assert("mask all zero")(n, n > 0)
@@ -285,17 +287,17 @@ def param_init_normlstm(options,
     return params
 
 
-def norm_tanh(self, x, gamma=1.0):
-    rnd = numpy.random.randn(10000000).astype(config.floatX)
+def norm_tanh(x, gamma=1.0):
+    rnd = numpy.random.randn(10000000).astype('float32')
     y = numpy.tanh(gamma*rnd)
     scale = numpy.sqrt(numpy.var(y))
-    scale = scale.astype(config.floatX)
+    scale = scale.astype('float32')
     return tensor.tanh(x) / scale
 
 
 def normlstm_layer(tparams, state_below,
                    options,
-                   prefix='bnlstm',
+                   prefix='normlstm',
                    mask=None, one_step=False,
                    init_state=None,
                    init_memory=None,
@@ -329,19 +331,16 @@ def normlstm_layer(tparams, state_below,
             init_state = tensor.alloc(init_state0, n_samples, dim)
             tparams[prfx(prefix, 'h0')] = init_state0
 
-    U = param('U')
-    b = param('b')
-    W = param('W')
-
 
     ### Normalize param:
-    nU = tensor.sqrt((U**2).sum(axis=0, keepdims=True))
-    U = U * param('recurrent_gammas').dimshuffle('x', 0) / nU
-    nW = tensor.sqrt((W**2).sum(axis=0, keepdims=True))
-    W = W * param('input_gammas') / nW
+    nU = tensor.sqrt((param('U')**2).sum(axis=0, keepdims=True))
+    normU = param('U') * param('recurrent_gammas').dimshuffle('x', 0) / nU
+    nW = tensor.sqrt((param('W')**2).sum(axis=0, keepdims=True))
+    normW = param('W') * param('input_gammas') / nW
+    b = param('b')
 
-    non_seqs = [U, b, W]
-    non_seqs.extend(list(map(param, "recurrent_gammas input_gammas output_gammas output_betas".split())))
+    non_seqs = [param('U'), normU, b]
+    non_seqs.extend(list(map(param, "output_gammas output_betas".split())))
 
     # initial/previous memory
     if init_memory is None:
@@ -353,8 +352,10 @@ def normlstm_layer(tparams, state_below,
         return _x[:, n*dim:(n+1)*dim]
 
     def _step(mask, sbelow, sbefore, cell_before, # *args):
-              U, b, W):
-        recurrent_term = dot(sbefore, U)
+              U, nU, b,
+              c_gamma, c_betas):
+
+        recurrent_term = dot(sbefore, nU)
         input_term = sbelow
         preact = recurrent_term + input_term + b
 
@@ -366,13 +367,13 @@ def normlstm_layer(tparams, state_below,
         c = f * cell_before + i * c_tilde
         c = mask * c + (1. - mask) * cell_before
 
-        c_norm = c * param('output_gammas') + param('output_beta')
+        c_norm = c * c_gamma + c_betas
         h = o * norm_tanh(c_norm)
         h = mask * h + (1. - mask) * sbefore
 
         return h, c
 
-    lstm_state_below = dot(state_below, W) #+ param('b')
+    lstm_state_below = dot(state_below, normW) #+ param('b')
     if state_below.ndim == 3:
         lstm_state_below = lstm_state_below.reshape((state_below.shape[0],
                                                      state_below.shape[1],
@@ -391,7 +392,6 @@ def normlstm_layer(tparams, state_below,
                                  mask.shape[1]*mask.shape[2])).dimshuffle(0, 1, 'x')
         elif mask.ndim == 2:
             mask = mask.dimshuffle(0, 1, 'x')
-
         rval, updates = theano.scan(_step,
                                     sequences=[mask, lstm_state_below],
                                     outputs_info = [init_state,

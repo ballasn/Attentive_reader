@@ -391,11 +391,11 @@ def train(dim_word_desc=400,# word vector dimensionality
                                                   errors)
 
     # Force L2 Parameter Norm
-    update = []
+    updates = []
     for variable in itemlist(tparams):
         norm = tensor.sqrt((variable**2).sum(axis=0, keepdims=True))
         updates.append((variable, variable / norm))
-    f_forcel2norm = function([], [], updates=updates)
+    f_forcel2norm = theano.function([], [], updates=updates)
 
     print 'Done'
     print 'Optimization'
