@@ -293,8 +293,8 @@ def train(dim_word_desc=400,# word vector dimensionality
             if train.done:
                 train.reset()
             for i, (d_, q_, a, max_dlen, max_qlen) in enumerate(train):
-                #if i > 10:
-                #    break
+                # if i > 10:
+                #     break
                 sys.stderr.write(".")
                 d, d_mask, q, q_mask, dlen, qlen = prepare_data(d_, q_,
                                                                 repeat_pad=model_options['repeat_pad'])
@@ -321,12 +321,13 @@ def train(dim_word_desc=400,# word vector dimensionality
 
             (costs, errs, probs,
              alphas, error_ent, error_dent) = eval_model(
-                f_pop_log_probs,
-                prepare_data if not opt_ds['use_sent_reps']
-                else prepare_data_sents,
-                model_options,
-                iterator,
-                use_sent_rep=opt_ds['use_sent_reps'])
+                 #f_log_probs,
+                 f_pop_log_probs,
+                 prepare_data if not opt_ds['use_sent_reps']
+                 else prepare_data_sents,
+                 model_options,
+                 iterator,
+                 use_sent_rep=opt_ds['use_sent_reps'])
 
             alphas_ = numpy.concatenate([a.argmax(0) for a in alphas.tolist()], axis=0)
 
@@ -411,12 +412,24 @@ def train(dim_word_desc=400,# word vector dimensionality
     train_cost_ave, train_err_ave, \
             train_gnorm_ave = reset_train_vals()
 
-    theano.printing.debugprint(f_grad_shared, print_type=True, file=open("%s_f_grad_shared.graph.txt" % mpath, "w"))
-    theano.printing.debugprint(f_update,      print_type=True, file=open("%s_f_update.graph.txt"      % mpath, "w"))
+    #theano.printing.debugprint(f_grad_shared, print_type=True, file=open("%s_f_grad_shared.graph.txt" % mpath, "w"))
+    #theano.printing.debugprint(f_update,      print_type=True, file=open("%s_f_update.graph.txt"      % mpath, "w"))
     print "graphs dumped"
 
     for eidx in xrange(max_epochs):
         n_samples = 0
+
+        # use_noise.set_value(0.)
+        # #if valid.done:
+        # valid.reset()
+        # valid_costs, valid_errs, valid_probs, \
+        #     valid_alphas, error_ent, error_dent = eval_model(f_log_probs,
+        #                                                      prepare_data if not opt_ds['use_sent_reps'] \
+        #                                                      else prepare_data_sents,
+        #                                                      model_options,
+        #                                                      valid,
+        #                                                      use_sent_rep=opt_ds['use_sent_reps'])
+        # continue
 
         if train.done:
             train.reset()
