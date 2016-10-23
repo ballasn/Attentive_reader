@@ -486,6 +486,7 @@ def train(dim_word_desc=400,# word vector dimensionality
             ud = time.time() - ud_start
 
             if l2_norm_force:
+                #assert False
                 f_forcel2norm()
 
             # Collect the running ave train stats.

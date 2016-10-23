@@ -28,7 +28,6 @@ def bn(x, gamma=1., beta=0., prefix=""):
 
 # sequence-wise batch normalization as in Laurent et al 2015
 def bn_sequence(x, gamma=1., beta=0., mask=None, prefix=""):
-
     import pdb; pdb.set_trace()
     assert x.ndim == 3
     n = mask.sum()
@@ -44,6 +43,14 @@ def bn_sequence(x, gamma=1., beta=0., mask=None, prefix=""):
         gamma=gamma, beta=beta,
         mean=tensor.shape_padleft(mean),
         std=tensor.shape_padleft(tensor.sqrt(var + 1e-6))).reshape(x.shape)
+
+    # Layer norm
+    # mean = x.mean(axis=2)
+    # var = x.var(axis=2)
+
+    # import pdb; pdb.set_trace()
+    # y = (x - tensor.shape_padright(mean)) / tensor.shape_padright(tensor.sqrt(var + 1e-6))
+    # y = x * gamma + beta
     assert y.ndim == 3
     return y
 
@@ -279,7 +286,7 @@ def param_init_normlstm(options,
     params[prfx(prefix,'U')] = U
     params[prfx(prefix,'b')] = numpy.zeros((4 * dim,)).astype('float32')
 
-    initial_gamma, initial_beta = 1.0, 0.0
+    initial_gamma, initial_beta = 0.1, 0.0
     params[prfx(prefix,'recurrent_gammas')] = initial_gamma * numpy.ones((4 * dim,)).astype('float32')
     params[prfx(prefix,'input_gammas')]     = initial_gamma * numpy.ones((4 * dim,)).astype('float32')
     params[prfx(prefix,'output_gammas')]    = initial_gamma * numpy.ones((1 * dim,)).astype('float32')
@@ -287,7 +294,7 @@ def param_init_normlstm(options,
     return params
 
 
-def norm_tanh(x, gamma=1.0):
+def norm_tanh(x, gamma=0.1):
     rnd = numpy.random.randn(10000000).astype('float32')
     y = numpy.tanh(gamma*rnd)
     scale = numpy.sqrt(numpy.var(y))
@@ -305,7 +312,7 @@ def normlstm_layer(tparams, state_below,
                    **kwargs):
 
     ### Warning must be the same than in param_init_normlstm
-    initial_gamma, initial_beta = 1.0, 0.0
+    initial_gamma, initial_beta = 0.1, 0.0
 
     if nsteps is None:
         nsteps = state_below.shape[0]
@@ -351,7 +358,8 @@ def normlstm_layer(tparams, state_below,
             return _x[:, :, n*dim:(n+1)*dim]
         return _x[:, n*dim:(n+1)*dim]
 
-    def _step(mask, sbelow, sbefore, cell_before, # *args):
+    def _step(mask, sbelow,
+              sbefore, cell_before, # *args):
               U, nU, b,
               c_gamma, c_betas):
 
