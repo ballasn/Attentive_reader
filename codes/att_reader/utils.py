@@ -151,6 +151,28 @@ def norm_weight(nin,
     return W.astype('float32')
 
 
+def cesar_ortho(shape):
+    # taken from https://gist.github.com/kastnerkyle/f7464d98fe8ca14f2a1a
+    """ benanne lasagne ortho init (faster than qr approach)"""
+    numpy.random.seed(123)
+    assert len(shape) == 2
+    if shape[1] / shape[0] == 4:
+        l = []
+        for i in range(4):
+            a = numpy.random.normal(0.0, 1.0, (shape[1]/4, shape[1]/4))
+            u, _, v = numpy.linalg.svd(a, full_matrices=False)
+            l.append(u[:shape[0], :])
+        value = numpy.concatenate(l, axis=1).astype('float32')
+    else:
+        flat_shape = (shape[0], numpy.prod(shape[1:]))
+        a = numpy.random.normal(0.0, 1.0, flat_shape)
+        u, _, v = numpy.linalg.svd(a, full_matrices=False)
+        q = u if u.shape == flat_shape else v  # pick the one with the correct shp
+        q = q.reshape(shape)
+        value = q[:shape[0], :shape[1]].astype('float32')
+    return value
+
+
 def norm_vec(dim):
     numpy.random.seed(123)
     minv = -numpy.sqrt(1.0/float(dim))

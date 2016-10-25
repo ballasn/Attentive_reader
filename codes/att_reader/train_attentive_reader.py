@@ -77,6 +77,8 @@ def main(job_id, params):
                                 popstat_eval=params['popstat_eval'],
                                 repeat_pad=params['repeat_pad'],
                                 l2normforce=params['l2normforce'],
+                                lr_decay=params['lr_decay'],
+
                                 **sent_opts)
 
     return validerr, validcost
@@ -94,6 +96,7 @@ if __name__ == '__main__':
     parser.add_argument("--learn_h0", default=1, type=int)
     parser.add_argument("--model_dir", default=model_dir, type=str)
     parser.add_argument("--lr", default=4e-4, type=float)
+    parser.add_argument("--lr_decay", default=0., type=float)
     parser.add_argument("--optimizer", default="adam", type=str)
     parser.add_argument("--validFreq", default=1000, type=int)
     parser.add_argument("--batch_size", default=32, type=int)
@@ -156,4 +159,5 @@ if __name__ == '__main__':
         'popstat_eval': args.popstat_eval,
         'repeat_pad': args.repeat_pad,
         'l2normforce': args.l2normforce,
+        'lr_decay': args.lr_decay,
         'reload': [args.reloadm]})

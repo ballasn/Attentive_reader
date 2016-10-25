@@ -2,7 +2,7 @@ import logging
 
 from collections import OrderedDict
 from att_reader.utils import norm_weight, ortho_weight, \
-                            norm_vec, Masked_Softmax
+                            norm_vec, Masked_Softmax, cesar_ortho
 from att_reader.layers import get_layer, dropout_layer, bn_sequence
 
 import numpy
@@ -31,8 +31,10 @@ def init_params(options):
     params = OrderedDict()
 
     # embedding
-    params['Wemb_word'] = norm_weight(options['n_words_q'],
-                                      options['dim_word_desc'])
+    # params['Wemb_word'] = norm_weight(options['n_words_q'],
+    #                                   options['dim_word_desc'])
+    params['Wemb_word'] = cesar_ortho([options['n_words_q'],
+                                       options['dim_word_desc']])
 
     mult = 2
 
@@ -51,9 +53,11 @@ def init_params(options):
     layertype = 'normff' if options["bn_everywhere"] else 'ff'
 
     if options['use_dq_sims']:
+        # params['ff_att_bi_dq'] = \
+        #         norm_weight(mult * options['dim'],
+        #                     mult * options['dim'])
         params['ff_att_bi_dq'] = \
-                norm_weight(mult * options['dim'],
-                            mult * options['dim'])
+                                 cesar_ortho([mult * options['dim'],  mult * options['dim']])
 
     params['ff_att_proj'] = norm_vec(options['dim'])
 

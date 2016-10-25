@@ -2,7 +2,7 @@ import theano
 import theano.tensor as tensor
 import numpy
 
-from att_reader.utils import prfx, norm_weight, ortho_weight
+from att_reader.utils import prfx, norm_weight, ortho_weight, cesar_ortho
 from core.utils import dot, sharedX
 from core.commons import Sigmoid, Tanh, Rect, global_trng, Linear, ELU
 
@@ -51,7 +51,7 @@ def bn_sequence(x, gamma=1., beta=0., mask=None, prefix=""):
     # import pdb; pdb.set_trace()
     # y = (x - tensor.shape_padright(mean)) / tensor.shape_padright(tensor.sqrt(var + 1e-6))
     # y = x * gamma + beta
-    assert y.ndim == 3
+    # assert y.ndim == 3
     return y
 
 
@@ -87,7 +87,8 @@ def param_init_fflayer(options,
     if nout is None:
         nout = options['dim_proj']
 
-    params[prfx(prefix, 'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
+    #params[prfx(prefix, 'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
+    params[prfx(prefix, 'W')] = cesar_ortho([nin, nout])
 
     if use_bias:
         params[prfx(prefix, 'b')] = numpy.zeros((nout,)).astype('float32')
@@ -118,8 +119,9 @@ def param_init_normfflayer(options,
                            use_bias=True):
     if nin  is None: nin  = options['dim_proj']
     if nout is None: nout = options['dim_proj']
-    params[prfx(prefix, 'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
-    params[prfx(prefix, 'gamma')] = 0.1 * numpy.ones((nout,)).astype('float32')
+    params[prfx(prefix, 'W')] = cesar_ortho([nin, nout])
+    #params[prfx(prefix, 'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
+    params[prfx(prefix, 'gamma')] = 1.0 * numpy.ones((nout,)).astype('float32')
     if use_bias:
         params[prfx(prefix, 'b')] = numpy.zeros((nout,)).astype('float32')
     return params
@@ -272,17 +274,22 @@ def param_init_normlstm(options,
     if dim is None:
         dim = options['dim_proj']
 
-    W = numpy.concatenate([norm_weight(nin,dim),
-                           norm_weight(nin,dim),
-                           norm_weight(nin,dim),
-                           norm_weight(nin,dim)],
-                           axis=1)
+    # W = numpy.concatenate([norm_weight(nin,dim),
+    #                        norm_weight(nin,dim),
+    #                        norm_weight(nin,dim),
+    #                        norm_weight(nin,dim)],
+    #                        axis=1)
+
+    # U = numpy.concatenate([ortho_weight(dim),
+    #                        ortho_weight(dim),
+    #                        ortho_weight(dim),
+    #                        ortho_weight(dim)],
+    #                        axis=1)
+
+    W = cesar_ortho([nin, 4*dim])
+    U = cesar_ortho([nin, 4*dim])
+
     params[prfx(prefix,'W')] = W
-    U = numpy.concatenate([ortho_weight(dim),
-                           ortho_weight(dim),
-                           ortho_weight(dim),
-                           ortho_weight(dim)],
-                           axis=1)
     params[prfx(prefix,'U')] = U
     params[prfx(prefix,'b')] = numpy.zeros((4 * dim,)).astype('float32')
 
@@ -346,7 +353,7 @@ def normlstm_layer(tparams, state_below,
     normW = param('W') * param('input_gammas') / nW
     b = param('b')
 
-    non_seqs = [param('U'), normU, b]
+    non_seqs = [param('U'), normU]
     non_seqs.extend(list(map(param, "output_gammas output_betas".split())))
 
     # initial/previous memory
@@ -360,28 +367,28 @@ def normlstm_layer(tparams, state_below,
 
     def _step(mask, sbelow,
               sbefore, cell_before, # *args):
-              U, nU, b,
+              U, nU,
               c_gamma, c_betas):
 
         recurrent_term = dot(sbefore, nU)
         input_term = sbelow
-        preact = recurrent_term + input_term + b
+        preact = recurrent_term + input_term
 
         i = Sigmoid(_slice(preact, 0, dim))
         f = Sigmoid(_slice(preact, 1, dim))
         o = Sigmoid(_slice(preact, 2, dim))
-        c_tilde = norm_tanh(_slice(preact, 3, dim))
+        c_tilde = norm_tanh(_slice(preact, 3, dim), gamma=initial_gamma)
 
         c = f * cell_before + i * c_tilde
         c = mask * c + (1. - mask) * cell_before
 
         c_norm = c * c_gamma + c_betas
-        h = o * norm_tanh(c_norm)
+        h = o *  norm_tanh(c_norm, gamma=initial_gamma)
         h = mask * h + (1. - mask) * sbefore
 
         return h, c
 
-    lstm_state_below = dot(state_below, normW) #+ param('b')
+    lstm_state_below = dot(state_below, normW) + param('b')
     if state_below.ndim == 3:
         lstm_state_below = lstm_state_below.reshape((state_below.shape[0],
                                                      state_below.shape[1],
@@ -392,7 +399,7 @@ def normlstm_layer(tparams, state_below,
         # should be batch-normalized by the caller
         assert False
         mask = mask.dimshuffle(0, 'x')
-        h, c = _step(mask, lstm_state_below, init_state, init_memory, U, b, W)
+        h, c = _step(mask, lstm_state_below, init_state, init_memory, U, nU)
         rval = [h, c]
     else:
         if mask.ndim == 3 and mask.ndim == state_below.ndim:

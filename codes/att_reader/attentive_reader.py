@@ -170,6 +170,7 @@ def train(dim_word_desc=400,# word vector dimensionality
           popstat_eval=False,
           repeat_pad=False,
           l2_norm_force=True,
+          lr_decay=0.,
           **opt_ds):
 
     ensure_dir_exists(model_dir)
@@ -393,11 +394,19 @@ def train(dim_word_desc=400,# word vector dimensionality
     # Force L2 Parameter Norm
     updates = []
     for variable in itemlist(tparams):
-        norm = tensor.sqrt((variable**2).sum(axis=0, keepdims=True))
-        updates.append((variable, variable / norm))
+        if variable.ndim == 2:
+            print variable.name, variable, variable.ndim
+            norm = tensor.sqrt((variable**2).sum(axis=0, keepdims=True))
+            updates.append((variable, variable / norm))
     f_forcel2norm = theano.function([], [], updates=updates)
+    import pdb; pdb.set_trace()
+
 
     print 'Done'
+
+    print "Force L2 Norm after initialization"
+    f_forcel2norm()
+
     print 'Optimization'
     history_errs = []
     # reload history
@@ -481,6 +490,12 @@ def train(dim_word_desc=400,# word vector dimensionality
                                                            a,
                                                            dlen,
                                                            qlen)
+
+
+            if model_options['lr_decay'] > 0:
+                cur_lrate =  lrate * (1. / (1. + model_options['lr_decay'] * uidx))
+            else:
+                cur_lrate =  lrate
 
             upnorm = f_update(lrate)
             ud = time.time() - ud_start
