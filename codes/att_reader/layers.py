@@ -135,6 +135,7 @@ def normfflayer(tparams,
               activ='lambda x: tensor.tanh(x)',
               **kwargs):
     W     = tparams[prfx(prefix, 'W'    )]
+    W.tag.normalize = True
     gamma = tparams[prfx(prefix, 'gamma')]
     b     = tparams[prfx(prefix, 'b'    )] if use_bias else 0
     nW = tensor.sqrt((W**2).sum(axis=0, keepdims=True))
@@ -293,7 +294,7 @@ def param_init_normlstm(options,
     params[prfx(prefix,'U')] = U
     params[prfx(prefix,'b')] = numpy.zeros((4 * dim,)).astype('float32')
 
-    initial_gamma, initial_beta = 0.1, 0.0
+    initial_gamma, initial_beta = 1.0, 0.0
     params[prfx(prefix,'recurrent_gammas')] = initial_gamma * numpy.ones((4 * dim,)).astype('float32')
     params[prfx(prefix,'input_gammas')]     = initial_gamma * numpy.ones((4 * dim,)).astype('float32')
     params[prfx(prefix,'output_gammas')]    = initial_gamma * numpy.ones((1 * dim,)).astype('float32')
@@ -302,7 +303,7 @@ def param_init_normlstm(options,
 
 
 def norm_tanh(x, gamma=0.1):
-    rnd = numpy.random.randn(10000000).astype('float32')
+    rnd = numpy.random.randn(100000000).astype('float32')
     y = numpy.tanh(gamma*rnd)
     scale = numpy.sqrt(numpy.var(y))
     scale = scale.astype('float32')
@@ -319,7 +320,7 @@ def normlstm_layer(tparams, state_below,
                    **kwargs):
 
     ### Warning must be the same than in param_init_normlstm
-    initial_gamma, initial_beta = 0.1, 0.0
+    initial_gamma, initial_beta = 1.0, 0.0
 
     if nsteps is None:
         nsteps = state_below.shape[0]
@@ -345,6 +346,8 @@ def normlstm_layer(tparams, state_below,
             init_state = tensor.alloc(init_state0, n_samples, dim)
             tparams[prfx(prefix, 'h0')] = init_state0
 
+    param('U').tag.normalize = True
+    param('W').tag.normalize = True
 
     ### Normalize param:
     nU = tensor.sqrt((param('U')**2).sum(axis=0, keepdims=True))

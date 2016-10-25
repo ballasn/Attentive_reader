@@ -173,6 +173,8 @@ def train(dim_word_desc=400,# word vector dimensionality
           lr_decay=0.,
           **opt_ds):
 
+
+    import pdb; pdb.set_trace()
     ensure_dir_exists(model_dir)
     mpath = os.path.join(model_dir, saveto)
     mpath_best = os.path.join(model_dir, prfx("best", saveto))
@@ -394,8 +396,8 @@ def train(dim_word_desc=400,# word vector dimensionality
     # Force L2 Parameter Norm
     updates = []
     for variable in itemlist(tparams):
-        if variable.ndim == 2:
-            print variable.name, variable, variable.ndim
+        if variable.ndim == 2 and hasattr(variable.tag, 'normalize'):
+            print variable.name, variable, variable.ndim, hasattr(variable.tag, 'normalize')
             norm = tensor.sqrt((variable**2).sum(axis=0, keepdims=True))
             updates.append((variable, variable / norm))
     f_forcel2norm = theano.function([], [], updates=updates)
