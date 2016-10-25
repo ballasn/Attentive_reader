@@ -127,20 +127,29 @@ def param_init_normfflayer(options,
     return params
 
 
+def norm_tanh(x, gamma=0.1):
+    rnd = numpy.random.randn(100000000).astype('float32')
+    y = numpy.tanh(gamma*rnd)
+    scale = numpy.sqrt(numpy.var(y))
+    scale = scale.astype('float32')
+    return tensor.tanh(x) / scale
+
+
+
 def normfflayer(tparams,
               state_below,
               options,
               prefix='rconv',
               use_bias=True,
-              activ='lambda x: tensor.tanh(x)',
+              activ='lambda x: norm_tanh(x, initial_gamma=1.)',
               **kwargs):
     W     = tparams[prfx(prefix, 'W'    )]
     W.tag.normalize = True
     gamma = tparams[prfx(prefix, 'gamma')]
     b     = tparams[prfx(prefix, 'b'    )] if use_bias else 0
     nW = tensor.sqrt((W**2).sum(axis=0, keepdims=True))
-    W = W * gamma.dimshuffle('x', 0) / nW
-    return eval(activ)(dot(state_below, W) + b)
+    W_norm = W * gamma.dimshuffle('x', 0) / nW
+    return eval(activ)(dot(state_below, W_norm) + b)
 
 
 # GRU layer
@@ -302,12 +311,6 @@ def param_init_normlstm(options,
     return params
 
 
-def norm_tanh(x, gamma=0.1):
-    rnd = numpy.random.randn(100000000).astype('float32')
-    y = numpy.tanh(gamma*rnd)
-    scale = numpy.sqrt(numpy.var(y))
-    scale = scale.astype('float32')
-    return tensor.tanh(x) / scale
 
 
 def normlstm_layer(tparams, state_below,
