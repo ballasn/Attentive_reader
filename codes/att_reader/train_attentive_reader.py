@@ -72,6 +72,8 @@ def main(job_id, params):
                                 patience=1000,
                                 use_dropout=params['use-dropout'][0],
                                 bn_everywhere=params['bn_everywhere'],
+                                norm_everywhere=params['norm_everywhere'],
+                                l2normforce=params['l2normforce'],
                                 bn_input_sequencewise=params['bn_input_sequencewise'],
                                 bn_input_not=params['bn_input_not'],
                                 popstat_eval=params['popstat_eval'],
@@ -106,17 +108,19 @@ if __name__ == '__main__':
     parser.add_argument("--use_dropout", default=1, type=int)
     parser.add_argument("--ms_nlayers", default=2, type=int)
     parser.add_argument("--bn-everywhere", action="store_true")
+    parser.add_argument("--norm-everywhere", action="store_true")
     parser.add_argument("--bn-input-sequencewise", action="store_true")
     parser.add_argument("--bn-input-not", action="store_true")
     parser.add_argument("--repeat-pad", action="store_true")
     parser.add_argument("--popstat-eval", action="store_true")
+    parser.add_argument("--l2normforce", action="store_true")
     parser.add_argument("--reloadm", default=0, type=int)
     args = parser.parse_args()
 
     if args.bn_everywhere:
         # haven't implemented BN versions of other unit types
-        assert args.unit_type in "lstm bnlstm".split()
-        args.unit_type = "bnlstm"
+        assert args.unit_type in "lstm bnlstm normlstm".split()
+        #args.unit_type = "bnlstm"
 
     main(0, {
         'debug': args.debug,
@@ -148,9 +152,11 @@ if __name__ == '__main__':
         'use_sent_reps': args.use_sent_reps,
         'learning-rate': [args.lr],
         'batch_size': args.batch_size,
+        'norm_everywhere': args.norm_everywhere,
         'bn_everywhere': args.bn_everywhere,
         'bn_input_sequencewise': args.bn_input_sequencewise,
         'bn_input_not': args.bn_input_not,
         'popstat_eval': args.popstat_eval,
+        'l2normforce': args.l2normforce,
         'repeat_pad': args.repeat_pad,
         'reload': [args.reloadm]})

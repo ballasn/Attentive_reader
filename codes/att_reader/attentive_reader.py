@@ -169,6 +169,7 @@ def train(dim_word_desc=400,# word vector dimensionality
           bn_input_not=False,
           popstat_eval=False,
           repeat_pad=False,
+          l2forcenorm=False,
           **opt_ds):
 
     ensure_dir_exists(model_dir)
