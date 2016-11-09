@@ -31,6 +31,7 @@ def init_params(options):
     params = OrderedDict()
 
     # embedding
+    # TODO CESAR: Change init here
     params['Wemb_word'] = norm_weight(options['n_words_q'],
                                       options['dim_word_desc'])
 
@@ -48,6 +49,7 @@ def init_params(options):
             mult *= 2
 
     # layer type for maybe-batch-normalized ff layers
+    # TODO CESAR: USE NORM PROP HERE
     layertype = 'bnff' if options["bn_everywhere"] else 'ff'
 
     if options['use_dq_sims']:
@@ -83,6 +85,7 @@ def init_params(options):
 
 
     if options['use_sent_reps']:
+        raise NotImplementedError('Have not checked this yet')
         params['Wemb_sent'] = norm_weight(mult * options['dim'],
                                           mult * options['dim'])
         # encoder: bidirectional RNN
@@ -99,12 +102,15 @@ def init_params(options):
                                                                 dim=options['dim'])
     ctxdim = mult * options['dim']
     logger.info("context dimensions is %d" % ctxdim)
+
+    #TODO CESAR: FIX INIT HERE
     params = get_layer(layertype)[0](options, params,
                                 prefix='ff_att_ctx',
                                 nin=ctxdim,
                                 nout=options['dim'])
 
     # readout
+    # TODO CESAR: FIX INIT HERE
     params = get_layer(layertype)[0](options, params,
                                 prefix='ff_att_q',
                                 nin=ctxdim,
@@ -114,6 +120,7 @@ def init_params(options):
 
 
     if options['use_desc_skip_c_g']:
+        raise NotImplementedError('Have not checked this yet')
         # readout for mean pooled desc
         params = get_layer(layertype)[0](options, params,
                                     prefix='ff_out_mean_d',
@@ -122,13 +129,14 @@ def init_params(options):
                                     use_bias=False,
                                     ortho=False)
 
-
+    # TODO CESAR: FIX INIT HERE
     params = get_layer(layertype)[0](options, params,
                                 prefix='ff_out_q',
                                 nin=ctxdim,
                                 nout=options['dim_word_ans'],
                                 ortho=False)
 
+    # TODO CESAR: FIX INIT HERE
     params = get_layer(layertype)[0](options, params,
                                 prefix='ff_out_ctx',
                                 nin=ctxdim,
@@ -136,6 +144,7 @@ def init_params(options):
                                 use_bias=False,
                                 ortho=False)
 
+    # TODO CESAR: FIX INIT HERE
     params = get_layer('ff')[0](options, params,
                                 prefix='ff_logit',
                                 nin=options['dim_word_ans'],
@@ -232,7 +241,7 @@ def build_nonbidir_model(inp,
                          use_noise=None,
                          truncate=None,
                          name=None):
-
+    raise NotImplementedError
     if use_dropout:
         assert use_noise is not None
 
@@ -242,6 +251,7 @@ def build_nonbidir_model(inp,
     n_timesteps = inp.shape[0]
     n_samples = inp.shape[1]
 
+    #TODO CESAR: FIX INIT HERE
     emb = dot(inp, tparams['Wemb_%s' % sfx])
     emb = emb.reshape([n_timesteps, n_samples, -1])
 
@@ -285,6 +295,7 @@ def build_attention(tparams,
     masked_desc = desc * desc_mask_
 
     desc_in = desc.reshape((-1, desc.shape[-1]))
+    #TODO FIX LAYER TYPE HERE
     layertype = 'bnff' if options["bn_everywhere"] else 'ff'
     projd = get_layer(layertype)[1](tparams=tparams,
                                state_below=desc_in,
@@ -305,7 +316,9 @@ def build_attention(tparams,
     if options['use_dq_sims']:
         print("NOTE: use_dq_sims introduces an extra term that we should batch normalize but currently don't because it's complicated")
         # really these two factors should be batch normalized separately, and then their product might need normalization as well.
+        # TODO CESAR
         q_proj = dot(q, tparams['ff_att_bi_dq'])
+        # TODO CESAR
         desc_proj = dot(masked_desc,
                         tparams['ff_att_bi_dq']).reshape((masked_desc.shape[0],
                         masked_desc.shape[1], -1))
@@ -316,6 +329,7 @@ def build_attention(tparams,
 
     #Intermediate layer for annotation values.
     proj_att = Tanh(projd + projq.dimshuffle('x', 0, 1) + sim_vals)
+    #TODO CESAR
     W_proj = tparams['ff_att_proj'].dimshuffle('x', 'x', 0)
     dot_proj = (W_proj * proj_att).sum(-1)
     pre_softmax = dot_proj
@@ -523,6 +537,7 @@ def build_model(tparams,
     g_desc_ave = 0.
 
     if options['use_desc_skip_c_g']:
+        raise NotImplementedError('Not checked yet.')
         desc_mean = (desc_rep * desc_mask).sum(0) / \
                 tensor.cast(desc_mask.sum(0), 'float32')
 
@@ -545,6 +560,7 @@ def build_model(tparams,
     opt_ret['dec_alphas'] = alphas
     opt_ret['desc_ctx'] = desc_ctx
 
+    #TODO CESAR layer type
     g_ctx = get_layer(layertype)[1](tparams,
                                desc_ctx,
                                options,
@@ -552,6 +568,7 @@ def build_model(tparams,
                                use_bias=False,
                                activ='Linear')
 
+    #TODO CESAR layer type
     g_q = get_layer(layertype)[1](tparams,
                              q_rep,
                              options,
@@ -567,6 +584,7 @@ def build_model(tparams,
         g_out = dropout_layer(g_out, use_noise,
                               p=options['dropout_rate'])
 
+    #TODO CESAR layer type
     logit = get_layer('ff')[1](tparams,
                                g_out,
                                options,
@@ -671,7 +689,8 @@ def eval_model(f_log_probs,
                 error_dents.append(perror_dent)
 
         if numpy.isnan(numpy.mean(probs)):
-            import ipdb; ipdb.set_trace()
+            print 'NAN'
+            sys.exit()
 
         if verbose:
             print >>sys.stderr, '%d samples computed' % (n_done)

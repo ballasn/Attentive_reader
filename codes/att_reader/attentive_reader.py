@@ -390,7 +390,21 @@ def train(dim_word_desc=400,# word vector dimensionality
                                                   cost,
                                                   errors)
 
+
+    # Force L2 Parameter Norm
+    updates = []
+    for variable in itemlist(tparams):
+        if variable.ndim == 2 and hasattr(variable.tag, 'normalize'):
+            print variable.name, variable, variable.ndim, hasattr(variable.tag, 'normalize')
+            norm = tensor.sqrt((variable**2).sum(axis=0, keepdims=True))
+            updates.append((variable, variable / norm))
+    f_forcel2norm = theano.function([], [], updates=updates)
+
     print 'Done'
+
+    print "Force L2 Norm after initialization"
+    f_forcel2norm()
+
     print 'Optimization'
     history_errs = []
     # reload history
@@ -477,6 +491,10 @@ def train(dim_word_desc=400,# word vector dimensionality
 
             upnorm = f_update(lrate)
             ud = time.time() - ud_start
+
+            if l2_norm_force:
+                #assert False
+                f_forcel2norm()
 
             # Collect the running ave train stats.
             train_cost_ave = running_ave(train_cost_ave,

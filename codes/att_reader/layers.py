@@ -54,6 +54,7 @@ layers = {
           'gru_cond': ('param_init_gru_cond', 'gru_cond_layer'),
           'lstm': ('param_init_lstm', 'lstm_layer'),
           'bnlstm': ('param_init_bnlstm', 'bnlstm_layer'),
+          'normff': ('param_init_normfflayer', 'normfflayer'),
           'normlstm': ('param_init_normlstm', 'normlstm_layer'),
           'lstm_tied': ('param_init_lstm_tied', 'lstm_tied_layer'),
           }
@@ -110,8 +111,8 @@ def param_init_bnfflayer(options,
                          use_bias=True):
     if nin  is None: nin  = options['dim_proj']
     if nout is None: nout = options['dim_proj']
-    params[prfx(prefix, 'W')] = norm_weight(nin, nout, scale=0.01, ortho=ortho)
-    params[prfx(prefix, 'gamma')] = 0.1 * numpy.ones((nout,)).astype('float32')
+    params[prfx(prefix, 'W')] = orthogonal((nin, nout))
+    params[prfx(prefix, 'gamma')] = 0.1 * numpy.ones((nout,)).astype('float32') #TODO CHECK GAMMA INIT
     if use_bias:
         params[prfx(prefix, 'b')] = numpy.zeros((nout,)).astype('float32')
     return params
@@ -392,12 +393,32 @@ def bnlstm_layer(tparams, state_below,
     return rval
 
 
+# ----------------------------------------------------------------------------
+# NORMALIZATION PROPAGATION
+# ----------------------------------------------------------------------------
 
-# norm preserving LSTM layer
-initial_c_gamma = 3.
-initial_x_gamma = 1.0#1.5
-initial_h_gamma = 1.0#1.5
-initial_beta = 0.
+
+def orthogonal(shape):
+    # taken from https://gist.github.com/kastnerkyle/f7464d98fe8ca14f2a1a
+    """ benanne lasagne ortho init (faster than qr approach)"""
+    assert len(shape) == 2
+    flat_shape = (shape[0], numpy.prod(shape[1:]))
+    a = numpy.random.normal(0.0, 1.0, flat_shape)
+    u, _, v = numpy.linalg.svd(a, full_matrices=False)
+    q = u if u.shape == flat_shape else v  # pick the one with the correct shp
+    q = q.reshape(shape)
+    value = q[:shape[0], :shape[1]].astype(config.floatX)
+    value /= numpy.sqrt((value**2).sum(axis=0))
+    print('Norm of the lines of the matrix:')
+    print(numpy.sqrt((value**2).sum(axis=0)))
+    return value
+
+
+initial_c_gamma = 1.0
+initial_x_gamma = 1.0
+initial_h_gamma = 1.0
+initial_beta = 0.0
+
 
 def param_init_normlstm(options,
                         params,
@@ -411,20 +432,21 @@ def param_init_normlstm(options,
     if dim is None:
         dim = options['dim_proj']
 
-    W = numpy.concatenate([norm_weight(nin,dim),
-                           norm_weight(nin,dim),
-                           norm_weight(nin,dim),
-                           norm_weight(nin,dim)],
+    W = numpy.concatenate([orthogonal((nin, dim)),
+                           orthogonal((nin, dim)),
+                           orthogonal((nin, dim)),
+                           orthogonal((nin, dim))],
                            axis=1)
     params[prfx(prefix,'W')] = W
-    U = numpy.concatenate([ortho_weight(dim),
-                           ortho_weight(dim),
-                           ortho_weight(dim),
-                           ortho_weight(dim)],
+    U = numpy.concatenate([orthogonal((dim, dim)),
+                           orthogonal((dim, dim)),
+                           orthogonal((dim, dim)),
+                           orthogonal(dim, dim))],
                            axis=1)
     params[prfx(prefix,'U')] = U
     params[prfx(prefix,'b')] = numpy.zeros((4 * dim,)).astype('float32')
 
+    params[prfx(prefix,'bn_gammas')] = numpy.ones((4 * dim,)).astype('float32')
     params[prfx(prefix,'recurrent_gammas')] = initial_c_gamma * numpy.ones((4 * dim,)).astype('float32')
     params[prfx(prefix,'input_gammas')]     = initial_x_gamma * numpy.ones((4 * dim,)).astype('float32')
     params[prfx(prefix,'output_gammas')]    = initial_h_gamma * numpy.ones((1 * dim,)).astype('float32')
@@ -432,16 +454,7 @@ def param_init_normlstm(options,
     return params
 
 
-def norm_tanh(x):
-    rnd = numpy.random.randn(10000000).astype('float32')
-    y = numpy.tanh(initial_c_gamma*rnd)
-    scale = numpy.sqrt(numpy.var(y))
-    scale = scale.astype('float32')
-    print 'tanh: scale', scale
-    return tensor.tanh(x) / scale
-
-
-def _std_c():
+def _get_stds(): #lol
     def sigmoid(x):
         return 1./(1 + numpy.exp(-x))
 
@@ -450,23 +463,16 @@ def _std_c():
 
     i = sigmoid(initial_x_gamma * sample() + initial_h_gamma * sample()) 
     o = sigmoid(initial_x_gamma * sample() + initial_h_gamma * sample())
-    f = sigmoid(initial_x_gamma * sample() + initial_h_gamma * sample() + 1) # TODO ADD EVENTUAL FORGET BIAS
+    f = sigmoid(initial_x_gamma * sample() + initial_h_gamma * sample() + 0) # TODO ADD EVENTUAL FORGET BIAS
     g = numpy.tanh(initial_x_gamma * sample() + initial_h_gamma * sample())
     std_c = numpy.sqrt(((i.var() + i.mean()**2)*g.var() + i.var()*g.mean()**2)/(1 - f.var() - f.mean()**2))
+    std_h = numpy.sqrt((numpy.tanh(initial_c_gamma * sample())).var() * (o.var() + o.mean()**2))
     print 'std_c', std_c
-
-    var_c = ((i.var() + i.mean()**2)*g.var() + i.var()*g.mean()**2)/(1 - f.var() - f.mean()**2)
-    std_h = numpy.sqrt((numpy.tanh(initial_c_gamma*sample()/std_c)).var() * (o.var() + o.mean() * o.mean()))
     print 'std_h', std_h
-
     return numpy.array(std_c, dtype='float32'), numpy.array(std_h, dtype='float32')
-#    return numpy.array(std_c, dtype='float32') 
 
 
-
-#def _var_o():
-
-
+# NORM LSTM
 def normlstm_layer(tparams, state_below,
                    options,
                    prefix='bnlstm',
@@ -486,15 +492,26 @@ def normlstm_layer(tparams, state_below,
 
     param = lambda name: tparams[prfx(prefix, name)]
 
+    # SEQUENCE WISE BATCH NORM BEFORE LSTM
+    if options["bn_input_not"]:
+        # keep parameters in graph so theano doesn't die)
+        state_below += 0* bn_sequence(state_below, gamma=param('bn_gammas'),
+                                      mask=mask, prefix=prefix + "_input")
+    elif options["bn_input_sequencewise"]:
+        state_below = bn_sequence(state_below, gamma=param('bn_gammas'), 
+                                  mask=mask, prefix=prefix + "_input")
+
+
     Wx = param('W')
     Wh = param('U')
     nx = tensor.sqrt((Wx**2).sum(axis=0, keepdims=True))
-    #norm_Wx = Wx * param('input_gammas').dimshuffle('x', 0) / nx
-    norm_Wx = Wx / nx
+    norm_Wx = Wx * param('input_gammas').dimshuffle('x', 0) / nx
     nh = tensor.sqrt((Wh**2).sum(axis=0, keepdims=True))
     norm_Wh = Wh * param('recurrent_gammas').dimshuffle('x', 0) / nh
+    Wx.tag.normalize = True
+    Wh.tag.normalize = True
+    
     dim = norm_Wh.shape[0]
-
 
     if mask is None:
         mask = tensor.alloc(1., state_below.shape[0], 1)
@@ -509,9 +526,7 @@ def normlstm_layer(tparams, state_below,
             init_state = tensor.alloc(init_state0, n_samples, dim)
             tparams[prfx(prefix, 'h0')] = init_state0
 
-    #U = param('U')
     b = param('b')
-    W = Wx
     non_seqs = [norm_Wh]
     non_seqs.extend(list(map(param, "output_gammas output_betas".split())))
 
@@ -519,40 +534,37 @@ def normlstm_layer(tparams, state_below,
     if init_memory is None:
         init_memory = tensor.alloc(0., n_samples, dim)
 
+    lstm_state_below = dot(state_below, norm_Wx) + params('b')
+    if state_below.ndim == 3:
+        lstm_state_below = lstm_state_below.reshape((state_below.shape[0],
+                                                     state_below.shape[1],
+                                                     -1))
+
     def _slice(_x, n, dim):
         if _x.ndim == 3:
             return _x[:, :, n*dim:(n+1)*dim]
         return _x[:, n*dim:(n+1)*dim]
 
     def _step(mask, sbelow, sbefore, cell_before,
-              Wh, output_gammas, output_betas):
-        recurrent_term = dot(sbefore, Wh)
+              norm_Wh, output_gammas, output_betas):
+        recurrent_term = dot(sbefore, norm_Wh)
         input_term = sbelow
         preact = recurrent_term + input_term
 
         i = Sigmoid(_slice(preact, 0, dim))
         f = Sigmoid(_slice(preact, 1, dim))
         o = Sigmoid(_slice(preact, 2, dim))
-        c = Tanh(_slice(preact, 3, dim))
+        g = Tanh(_slice(preact, 3, dim))
 
-        std_c, std_h = _std_c()
-        c = f * cell_before + i * c
+        std_c, std_h = _get_stds()
+        c = f * cell_before + i * g
         c_norm = (c * output_gammas) / std_c  + output_betas
-        #import pdb; pdb.set_trace()
-        #h = 2.0 * norm_tanh(c_norm) / std_h
-        #h = o * norm_tanh(c_norm)
         h = o * Tanh(c_norm)  / std_h
 
         c = mask * c + (1. - mask) * cell_before
         h = mask * h + (1. - mask) * sbefore
-
         return h, c
 
-    lstm_state_below = dot(state_below, norm_Wx)
-    if state_below.ndim == 3:
-        lstm_state_below = lstm_state_below.reshape((state_below.shape[0],
-                                                     state_below.shape[1],
-                                                     -1))
 
     if one_step:
         # if this is the case then the sequence of lstm_state_below states
@@ -568,14 +580,6 @@ def normlstm_layer(tparams, state_below,
         elif mask.ndim == 2:
             mask = mask.dimshuffle(0, 1, 'x')
 
-        if options["bn_input_not"]:
-            # no input normalization (but keep parameters in graph so theano doesn't die)
-            lstm_state_below += 0* bn_sequence(lstm_state_below, gamma=param('input_gammas'), mask=mask, prefix=prefix + "_input")
-        elif options["bn_input_sequencewise"]:
-            # batch-normalize input sequence-wise
-            lstm_state_below = bn_sequence(lstm_state_below, gamma=param('input_gammas'), beta=param('b'),
-                                           mask=mask, prefix=prefix + "_input")
-
         rval, updates = theano.scan(_step,
                                     sequences=[mask, lstm_state_below],
                                     outputs_info = [init_state,
@@ -585,6 +589,46 @@ def normlstm_layer(tparams, state_below,
                                     strict=True,
                                     n_steps=nsteps)
     return rval
+
+
+# NORM LINEAR
+def param_init_normfflayer(options,
+                           params,
+                           prefix='normff',
+                           nin=None,
+                           nout=None,
+                           ortho=True,
+                           use_bias=True):
+    if nin  is None: nin  = options['dim_proj']
+    if nout is None: nout = options['dim_proj']
+    params[prfx(prefix, 'W')] = orthogonal((nin, nout))
+    params[prfx(prefix, 'gamma')] = 1.0 * numpy.ones((nout,)).astype('float32') #TODO INITIAL GAMMA FF LAYER
+    if use_bias:
+        params[prfx(prefix, 'b')] = numpy.zeros((nout,)).astype('float32')
+    return params
+
+
+def normfflayer(tparams,
+                state_below,
+                options,
+                prefix='rconv',
+                use_bias=True,
+                activ='lambda x: tensor.tanh(x)',
+                **kwargs):
+    W     = tparams[prfx(prefix, 'W'    )]
+    gamma = tparams[prfx(prefix, 'gamma')]
+    b     = tparams[prfx(prefix, 'b'    )] if use_bias else 0
+    W.tag.normalize = True
+    n = tensor.sqrt((W**2).sum(axis=0, keepdims=True))
+    norm_W = W * gamma.dimshuffle('x', 0) / n
+    # TODO: DEAL WITH THE ACTIVATION 
+    raise NotImplementedError
+    return eval(activ)(dot(state_below, norm_W) + b)
+
+
+# ----------------------------------------------------------------------------
+# BASIC LSTM
+# ----------------------------------------------------------------------------
 
 # LSTM layer
 def param_init_lstm(options,
