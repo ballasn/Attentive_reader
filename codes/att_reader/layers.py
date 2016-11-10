@@ -407,7 +407,7 @@ def orthogonal(shape):
     u, _, v = numpy.linalg.svd(a, full_matrices=False)
     q = u if u.shape == flat_shape else v  # pick the one with the correct shp
     q = q.reshape(shape)
-    value = q[:shape[0], :shape[1]].astype(config.floatX)
+    value = q[:shape[0], :shape[1]].astype('float32')
     value /= numpy.sqrt((value**2).sum(axis=0))
     print('Norm of the lines of the matrix:')
     print(numpy.sqrt((value**2).sum(axis=0)))
@@ -441,7 +441,7 @@ def param_init_normlstm(options,
     U = numpy.concatenate([orthogonal((dim, dim)),
                            orthogonal((dim, dim)),
                            orthogonal((dim, dim)),
-                           orthogonal(dim, dim))],
+                           orthogonal((dim, dim))],
                            axis=1)
     params[prfx(prefix,'U')] = U
     params[prfx(prefix,'b')] = numpy.zeros((4 * dim,)).astype('float32')
@@ -534,7 +534,7 @@ def normlstm_layer(tparams, state_below,
     if init_memory is None:
         init_memory = tensor.alloc(0., n_samples, dim)
 
-    lstm_state_below = dot(state_below, norm_Wx) + params('b')
+    lstm_state_below = dot(state_below, norm_Wx) + param('b')
     if state_below.ndim == 3:
         lstm_state_below = lstm_state_below.reshape((state_below.shape[0],
                                                      state_below.shape[1],
