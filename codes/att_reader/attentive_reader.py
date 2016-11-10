@@ -492,7 +492,7 @@ def train(dim_word_desc=400,# word vector dimensionality
             upnorm = f_update(lrate)
             ud = time.time() - ud_start
 
-            if l2_norm_force:
+            if l2forcenorm:
                 #assert False
                 f_forcel2norm()
 

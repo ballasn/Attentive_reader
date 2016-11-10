@@ -446,7 +446,7 @@ def param_init_normlstm(options,
     params[prfx(prefix,'U')] = U
     params[prfx(prefix,'b')] = numpy.zeros((4 * dim,)).astype('float32')
 
-    params[prfx(prefix,'bn_gammas')] = numpy.ones((4 * dim,)).astype('float32')
+    params[prfx(prefix,'bn_gammas')] = numpy.ones((dim,)).astype('float32')
     params[prfx(prefix,'recurrent_gammas')] = initial_c_gamma * numpy.ones((4 * dim,)).astype('float32')
     params[prfx(prefix,'input_gammas')]     = initial_x_gamma * numpy.ones((4 * dim,)).astype('float32')
     params[prfx(prefix,'output_gammas')]    = initial_h_gamma * numpy.ones((1 * dim,)).astype('float32')
@@ -499,7 +499,7 @@ def normlstm_layer(tparams, state_below,
                                       mask=mask, prefix=prefix + "_input")
     elif options["bn_input_sequencewise"]:
         state_below = bn_sequence(state_below, gamma=param('bn_gammas'), 
-                                  mask=mask, prefix=prefix + "_input")
+                                  mask=mask.dimshuffle(0, 1, 'x'), prefix=prefix + "_input")
 
 
     Wx = param('W')
